@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Explanation, Step } from "@/lib/agent";
 import { SAMPLE_REPORTS } from "@/lib/reports";
 import { OrganFigure, organFrom } from "./OrganFigure";
-import { redact, type Removal } from "@/lib/redact";
+import { redact, redactSegments, type Removal } from "@/lib/redact";
 import { fileToText } from "@/lib/fileText";
 import { LANGUAGES } from "@/lib/languages";
 
@@ -354,6 +354,8 @@ export default function Home() {
           >
             {loading ? "Explaining…" : "Explain this report"}
           </button>
+          <SentPreview report={report} />
+
           <PrivacyPanel
             privateMode={privateMode}
             setPrivateMode={setPrivateMode}
@@ -664,5 +666,37 @@ function PrivacyPanel({
         </ul>
       </details>
     </div>
+  );
+}
+
+/** Live preview of exactly what will be sent, with removed personal details crossed out. */
+function SentPreview({ report }: { report: string }) {
+  const r = useMemo(() => redactSegments(report), [report]);
+  if (report.trim().length < 10) return null;
+  const n = r.removed.reduce((a, b) => a + b.count, 0);
+  return (
+    <details open={n > 0} className="mt-4 border-t border-line pt-3 text-sm">
+      <summary className="cursor-pointer">
+        <span className="font-medium">What will be sent</span>{" "}
+        <span className={n ? "text-accent" : "text-muted"}>
+          {n ? `· ${n} personal detail${n > 1 ? "s" : ""} removed` : "· no personal details found"}
+        </span>
+      </summary>
+      <p className="mt-2 text-xs text-muted">
+        Crossed out in red: removed on your device and never sent. In green: what is sent instead.
+      </p>
+      <pre className="mt-2 max-h-72 overflow-auto border border-line bg-white p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+        {r.segments.map((seg, i) =>
+          seg.removed ? (
+            <span key={i} title={`${seg.removed.kind}: removed before sending`}>
+              <del className="bg-[#9b2c2c]/10 text-danger decoration-2">{seg.removed.original}</del>{" "}
+              <ins className="bg-accent/10 text-accent no-underline">{seg.text}</ins>
+            </span>
+          ) : (
+            <span key={i}>{seg.text}</span>
+          ),
+        )}
+      </pre>
+    </details>
   );
 }

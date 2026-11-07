@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { Explanation, Step } from "@/lib/agent";
 import { SAMPLE_REPORTS } from "@/lib/reports";
+import { OrganFigure, organFrom } from "./OrganFigure";
 
 type StepState = { status: "waiting" | "running" | "done"; detail?: string };
 
@@ -137,7 +138,7 @@ export default function Home() {
     }
   }
 
-  const showLiver = !!data && /liver|hepat|foie/i.test(data.organ_for_visual);
+  const organ = data ? organFrom(data.organ_for_visual) : null;
   const started = loading || data || error;
 
   return (
@@ -284,11 +285,10 @@ export default function Home() {
                 </Section>
               )}
 
-              {showLiver && (
-                <Section title="Where the liver is">
-                  <figure className="flex flex-col items-start gap-2 sm:flex-row sm:items-end sm:gap-6">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/liver.svg" alt="Line drawing of a torso with the liver on the upper right of the abdomen" className="w-40" />
+              {organ && (
+                <Section title={`Where the ${organ} is`}>
+                  <figure className="flex flex-col items-start gap-2 pt-2 sm:flex-row sm:items-end sm:gap-6">
+                    <OrganFigure organ={organ} />
                     <figcaption className="text-sm text-muted">Educational drawing, not the patient&rsquo;s scan.</figcaption>
                   </figure>
                 </Section>

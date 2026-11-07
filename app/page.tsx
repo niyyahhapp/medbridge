@@ -5,6 +5,7 @@ import type { Explanation, Step } from "@/lib/agent";
 import { SAMPLE_REPORTS } from "@/lib/reports";
 import { OrganFigure, organFrom } from "./OrganFigure";
 import { redact, type Removal } from "@/lib/redact";
+import { fileToText } from "@/lib/fileText";
 
 const AUTO_DELETE_MINUTES = 10;
 
@@ -78,6 +79,33 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Files are turned into text on this device; only the text (after the person checks it) is sent.
+  const [fileStatus, setFileStatus] = useState<{ kind: "busy" | "done" | "error"; text: string } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setCleared(null);
+    setFileStatus({ kind: "busy", text: "Reading your file on this device…" });
+    try {
+      const text = await fileToText(file, (m) => setFileStatus({ kind: "busy", text: m }));
+      if (text.replace(/\s/g, "").length < 10) throw new Error("No readable text was found in this file. Try a clearer photo, or paste the text.");
+      setReport(text);
+      setData(null);
+      setError(null);
+      setRemoved(null);
+      setFileStatus({
+        kind: "done",
+        text: `Text taken from "${file.name}". The file itself was not uploaded. Please check the text below before you press Explain.`,
+      });
+    } catch (e) {
+      setFileStatus({ kind: "error", text: (e as Error).message || "This file could not be read." });
+    } finally {
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
   function clearAll(message = "Everything was deleted from this page.") {
     stopAudio();
     setReport("");
@@ -85,6 +113,7 @@ export default function Home() {
     setError(null);
     setRemoved(null);
     setSteps(freshSteps());
+    setFileStatus(null);
     setCleared(message);
   }
 
@@ -226,18 +255,63 @@ export default function Home() {
             ))}
           </div>
 
-          <textarea
-            id="report"
-            value={report}
-            onChange={(e) => setReport(e.target.value)}
-            rows={9}
-            className="mt-3 w-full border border-line bg-white p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
-            placeholder="Paste the text of a medical report here."
-          />
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              handleFile(e.dataTransfer.files?.[0]);
+            }}
+            className={`relative mt-3 ${dragging ? "outline-2 outline-offset-2 outline-dashed outline-accent" : ""}`}
+          >
+            <textarea
+              id="report"
+              value={report}
+              onChange={(e) => setReport(e.target.value)}
+              rows={9}
+              className="w-full border border-line bg-white p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
+              placeholder="Paste the text of a medical report here, or drop a PDF or a photo of it."
+            />
+            {dragging && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-paper/90 text-accent">
+                Drop the file to read it on this device
+              </div>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={fileStatus?.kind === "busy"}
+              className="border border-ink px-3 py-1.5 font-medium hover:bg-ink hover:text-paper disabled:opacity-50"
+            >
+              Attach a file
+            </button>
+            <span className="text-xs text-muted">PDF, photo or text file. Or drag it onto the box. It is read on your device.</span>
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".pdf,.txt,.md,image/*"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
+          </div>
+          {fileStatus && (
+            <p
+              role="status"
+              className={`mt-2 text-sm ${fileStatus.kind === "error" ? "text-danger" : fileStatus.kind === "done" ? "text-accent" : "text-muted"}`}
+            >
+              {fileStatus.text}
+            </p>
+          )}
           <button
             type="button"
             onClick={run}
-            disabled={loading || report.trim().length < 10}
+            disabled={loading || fileStatus?.kind === "busy" || report.trim().length < 10}
             className="mt-3 w-full bg-ink px-5 py-3 font-medium text-paper transition hover:bg-accent disabled:opacity-50 sm:w-auto"
           >
             {loading ? "Explaining…" : "Explain this report"}
@@ -481,8 +555,9 @@ function PrivacyPanel({
         <summary className="cursor-pointer text-accent underline underline-offset-4">Where your report goes</summary>
         <ul className="mt-2">
           <li className="border-b border-line py-2">
-            <span className="font-medium">In your browser first:</span> names, dates of birth, phone numbers, emails,
-            addresses and ID numbers are removed before anything is sent. Medical values are kept.
+            <span className="font-medium">In your browser first:</span> attached files (PDFs and photos) are read on your
+            device and are never uploaded. Names, dates of birth, phone numbers, emails, addresses and ID numbers are
+            removed before anything is sent. Medical values are kept.
           </li>
           <li className="border-b border-line py-2">
             <span className="font-medium">Our server:</span> uses the report only while explaining it. It is never saved,

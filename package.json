@@ -6,13 +6,19 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prebuild": "node scripts/copy-vendor.mjs",
+    "predev": "node scripts/copy-vendor.mjs"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/fra": "^1.0.0",
     "fast-xml-parser": "^5.12.0",
     "next": "15.5.29",
+    "pdfjs-dist": "^6.5.438",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

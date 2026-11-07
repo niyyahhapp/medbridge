@@ -2,7 +2,12 @@
 // from a built-in glossary, and quotes what each article concluded.
 import type { Emit, Explanation } from "./agent";
 import { GLOSSARY } from "./glossary";
-import { getAbstracts, searchPubmed } from "./pubmed";
+import { rangeSentence, readRange } from "./ranges";
+import { getAbstracts, searchPubmed, type Article } from "./pubmed";
+
+/** Where PubMed results come from: directly (server) or through our search-words-only endpoint (browser). */
+export type ResearchDeps = { searchPubmed: (q: string, max?: number) => Promise<string[]>; getAbstracts: (ids: string[]) => Promise<Article[]> };
+const SERVER_DEPS: ResearchDeps = { searchPubmed, getAbstracts };
 
 function conclusion(abstract: string): string {
   const m = abstract.match(/(?:^|\n)(?:CONCLUSIONS?|INTERPRETATION|CONCLUSIONS AND RELEVANCE)[^:\n]*:\s*([^\n]+)/i);
@@ -16,7 +21,7 @@ function conclusion(abstract: string): string {
   return s.length > 450 ? s.slice(0, 447).trimEnd() + "…" : s;
 }
 
-export async function basicExplain(report: string, emit: Emit): Promise<Explanation> {
+export async function basicExplain(report: string, emit: Emit, deps: ResearchDeps = SERVER_DEPS): Promise<Explanation> {
   emit({ type: "step", step: "read", status: "running" });
   const hits = GLOSSARY.filter((g) => g.match.test(report));
   const lines = report
@@ -49,7 +54,7 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
   let pmids: string[] = [];
   for (const q of queries.slice(0, 3)) {
     emit({ type: "step", step: "search_pubmed", status: "running", detail: q });
-    pmids = await searchPubmed(q, 5);
+    pmids = await deps.searchPubmed(q, 5);
     emit({ type: "step", step: "search_pubmed", status: "done", detail: `${q} · ${pmids.length} found` });
     if (pmids.length) break;
   }
@@ -57,7 +62,7 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
   let research: Explanation["research"] = [];
   if (pmids.length) {
     emit({ type: "step", step: "get_abstracts", status: "running", detail: pmids.join(", ") });
-    const articles = (await getAbstracts(pmids)).filter((a) => a.abstract && conclusion(a.abstract).length >= 40);
+    const articles = (await deps.getAbstracts(pmids)).filter((a) => a.abstract && conclusion(a.abstract).length >= 40);
     research = articles.slice(0, 3).map((a) => ({
       pmid: a.pmid,
       title: a.title,
@@ -74,20 +79,30 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
   const findings = lines
     .filter((l) => l !== planLine && !/^[^:]{2,40}:\s*$/.test(l)) // skip headings like "Thyroid function tests:"
     .map((l) => {
-      const notes = GLOSSARY.filter((g) => g.match.test(l) && g.query).map((g) => `${g.term}: ${g.plain}`);
-      return {
-        from_document: l,
-        explanation: notes.join(" "),
-      };
+      // Exact comparison with the report's own reference range (arithmetic, not AI).
+      const r = readRange(l);
+      const meaning = GLOSSARY.find((g) => g.match.test(l) && g.query);
+      const parts = [
+        r ? rangeSentence(r) : "",
+        meaning ? `${meaning.term.replace(/\s*\(.*\)/, "")}: ${meaning.plain}` : "",
+      ].filter(Boolean);
+      return { from_document: l, explanation: parts.join(" ") };
     });
+  const ranges = lines.map(readRange).filter((r): r is NonNullable<typeof r> => !!r);
+  const outside = ranges.filter((r) => r.status !== "inside");
+  const rangeSummary = ranges.length
+    ? ` ${ranges.map((r) => `Your ${r.name} (${r.valueText}) is ${r.status} the range written in your report (${r.rangeText})`).join(". ")}.` +
+      (outside.length ? " One result outside a range does not, on its own, show a lasting condition. Tests are often repeated to confirm." : "")
+    : "";
 
   const main = topics[0]?.term;
   const data: Explanation = {
-    summary: diagnosis
-      ? `Your document says: "${lines.find((l) => l.toLowerCase().includes(diagnosis.toLowerCase())) ?? diagnosis}" Below, each medical word is explained in plain language${research.length ? ", and real research about it is linked from PubMed" : ""}.`
-      : main
-      ? `Your document talks about ${main.replace(/\s*\(.*\)/, "").toLowerCase()}. Below, each medical word is explained in plain language${research.length ? ", and real research about it is linked from PubMed" : ""}.`
-      : "Below, each medical word in your document is explained in plain language.",
+    summary:
+      (diagnosis
+        ? `Your document says: "${lines.find((l) => l.toLowerCase().includes(diagnosis.toLowerCase())) ?? diagnosis}"`
+        : main
+          ? `Your document talks about ${((t) => (/[A-Z].*[A-Z0-9]/.test(t) ? t : t.toLowerCase()))(main.replace(/\s*\(.*\)/, ""))}.`
+          : "Here is what your document says, in plain words.") + rangeSummary,
     terms: hits.map((h) => ({
       term: h.term,
       plain_meaning: h.plain,
@@ -106,7 +121,7 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
       "When should I contact you sooner?",
     ],
     caution:
-      "Basic mode: the AI is not connected, so word meanings come from MedBridge's built-in glossary and research is quoted directly from PubMed.",
+      "Basic mode: the AI is not connected, so this was put together with exact rules: each value is compared with the reference range written in your report, word meanings come from MedBridge's built-in glossary, and research is quoted directly from PubMed.",
   };
   emit({ type: "step", step: "write", status: "done" });
   return data;

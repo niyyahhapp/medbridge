@@ -48,3 +48,12 @@ export function stripViolations(d: Explanation): Explanation {
     caution: clean(d.caution),
   };
 }
+
+/** For small on-device models: drop any sentence containing a number that is not in the report. */
+export function dropInventedNumbers(text: string, report: string): string {
+  const known = new Set(report.match(/\d+(?:[.,]\d+)?/g) ?? []);
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => (sentence.match(/\d+(?:[.,]\d+)?/g) ?? []).every((n) => known.has(n)))
+    .join(" ");
+}

@@ -7,6 +7,7 @@ import { OrganFigure, organFrom } from "./OrganFigure";
 import { redact, redactSegments, type Removal } from "@/lib/redact";
 import { fileToText } from "@/lib/fileText";
 import { LANGUAGES } from "@/lib/languages";
+import { privateExplain } from "@/lib/privateMode";
 
 const AUTO_DELETE_MINUTES = 10;
 
@@ -180,11 +181,26 @@ export default function Home() {
     // Remove personal details in the browser, before anything is sent.
     const safe = redact(report);
     setRemoved(safe.removed);
+    // Private mode: everything runs in this browser. The report is never sent anywhere.
+    if (privateMode) {
+      try {
+        const onStep = (ev: Record<string, unknown>) => {
+          if (ev.type === "step")
+            setSteps((s) => ({ ...s, [ev.step as Step]: { status: ev.status as StepState["status"], detail: (ev.detail as string) ?? s[ev.step as Step].detail } }));
+        };
+        setData(await privateExplain(safe.text, onStep));
+      } catch (e) {
+        setError((e as Error).message || "Something went wrong. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     try {
       const res = await fetch("/api/explain", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ report: safe.text, privateMode }),
+        body: JSON.stringify({ report: safe.text }),
       });
       if (!res.body) throw new Error("No answer from the server.");
       const reader = res.body.getReader();
@@ -578,7 +594,7 @@ export default function Home() {
       <footer className="mt-16 border-t border-line pt-4 text-xs leading-relaxed text-muted">
         MedBridge explains information. It does not diagnose, recommend treatment, or replace your healthcare
         professional.{" "}
-        {data?.caution.startsWith("Basic mode")
+        {data?.caution.startsWith("Basic mode") || data?.caution.startsWith("Private mode")
           ? "This explanation was put together automatically and has not been reviewed by a clinician."
           : "This explanation was written by AI and has not been reviewed by a clinician."}{" "}
         The sample patients are fictional. Research comes from PubMed; voice by ElevenLabs.
@@ -623,8 +639,10 @@ function PrivacyPanel({
         <span>
           <span className="font-medium">Private mode</span>
           <span className="block text-sm text-muted">
-            Your report is not sent to any AI company, and translation and online voices are switched off. You get plain
-            meanings of the words and real research from PubMed, without an AI-written explanation.
+            Your report never leaves your device. The explanation is built inside your browser with exact rules (no AI):
+            each value is compared with the range written in your report, words are explained from our glossary, and only
+            short search words (like &ldquo;fatty liver&rdquo;) are sent out to find PubMed research. Translation and online
+            voices are off.
           </span>
         </span>
       </label>
@@ -653,14 +671,18 @@ function PrivacyPanel({
             the middle of a sentence, so please check before you press Explain.
           </li>
           <li className="border-b border-line py-2">
-            <span className="font-medium">Our server:</span> uses the report only while explaining it. Our code does not
-            save it or write it to logs, and there is no database. Our hosting service (Vercel) keeps standard records of
+            <span className="font-medium">Our server:</span>{" "}
+            {privateMode
+              ? "never receives your report in Private mode, only short search words for PubMed."
+              : "uses the report only while explaining it."}{" "}
+            {privateMode ? null : <> Our code does not
+            save it or write it to logs, and there is no database.</>}{" "}Our hosting service (Vercel) keeps standard records of
             each visit, such as the time and IP address, but not the report.
           </li>
           <li className="border-b border-line py-2">
             <span className="font-medium">AI company:</span>{" "}
             {privateMode
-              ? "not used, because Private mode is on."
+              ? "none. In Private mode no AI is used and your report is not sent to any AI company."
               : ai
                 ? aiIsLocal
                   ? `${ai}.`
@@ -684,8 +706,8 @@ function PrivacyPanel({
               : `only if you choose a language, the explanation (not your report) is sent to ${services.translate === "DeepL" ? "DeepL" : ai} to translate it.`}
           </li>
           <li className="py-2">
-            <span className="font-medium">This page:</span> stores nothing in your browser, so nothing is kept after you
-            close it. Use &ldquo;Delete everything now&rdquo; at any time. Fonts and all other files come from our own
+            <span className="font-medium">This page:</span> stores nothing in your browser, so nothing is kept after you close
+            it. Use &ldquo;Delete everything now&rdquo; at any time. Fonts and all other files come from our own
             site, so loading the page does not contact Google or other companies.
           </li>
         </ul>

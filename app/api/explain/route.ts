@@ -1,4 +1,5 @@
-import { explain } from "@/lib/agent";
+import { explain, provider } from "@/lib/agent";
+import { basicExplain } from "@/lib/basic";
 import { allow, clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
         if (!allow("ip:" + clientIp(req), PER_PERSON) || !allow("total", TOTAL)) {
           throw new Error("The demo is busy right now. Please try again in a little while.");
         }
-        const data = await explain(report, emit);
+        const data = provider() ? await explain(report, emit) : await basicExplain(report, emit);
         emit({ type: "result", data });
       } catch (e) {
         console.error("explain failed:", e);

@@ -18,9 +18,16 @@ async function throttledFetch(url: string): Promise<Response> {
   const wait = lastRequest + 350 - Date.now();
   lastRequest = Math.max(Date.now(), lastRequest + 350);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`PubMed request failed (${res.status})`);
-  return res;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.ok) return res;
+    // PubMed says "too many requests" or is briefly down: wait and try again.
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      continue;
+    }
+    throw new Error(`PubMed is not answering right now (${res.status}). Please try again in a moment.`);
+  }
 }
 
 export async function searchPubmed(query: string, max = 5): Promise<string[]> {

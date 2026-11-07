@@ -323,8 +323,11 @@ export default function Home() {
 
       <footer className="mt-16 border-t border-line pt-4 text-xs leading-relaxed text-muted">
         MedBridge explains information. It does not diagnose, recommend treatment, or replace your healthcare
-        professional. This explanation was written by AI and has not been reviewed by a clinician. The sample patients
-        are fictional. Research comes from PubMed; voice by ElevenLabs.
+        professional.{" "}
+        {data?.caution.startsWith("Basic mode")
+          ? "This explanation was put together automatically and has not been reviewed by a clinician."
+          : "This explanation was written by AI and has not been reviewed by a clinician."}{" "}
+        The sample patients are fictional. Research comes from PubMed; voice by ElevenLabs.
       </footer>
     </main>
   );

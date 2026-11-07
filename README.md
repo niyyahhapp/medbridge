@@ -21,6 +21,10 @@ Paste a medical report and get a plain-language explanation, backed by real PubM
 
 Use a model that supports tool calling (for example a Qwen or Llama instruct model).
 
+## Featherless
+
+Set `OPENAI_BASE_URL=https://api.featherless.ai/v1`, `OPENAI_API_KEY` (your Featherless key) and `OPENAI_MODEL` (an instruct model from featherless.ai/models). If the model does not support tool calling, MedBridge automatically falls back to a guided pipeline: it searches PubMed itself and the model writes the explanation from those abstracts only.
+
 ## Modes
 
 - **AI agent**: when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENAI_BASE_URL` is set.

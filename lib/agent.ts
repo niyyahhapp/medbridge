@@ -80,7 +80,7 @@ async function runTool(
 
 type Turn = { text: string; calls: { id: string; name: string; input: any }[]; raw: any };
 
-async function anthropicCall(messages: any[], withTools: boolean): Promise<Turn> {
+async function anthropicCall(messages: any[], withTools: boolean | "omit"): Promise<Turn> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -94,7 +94,7 @@ async function anthropicCall(messages: any[], withTools: boolean): Promise<Turn>
       system: SYSTEM_PROMPT,
       messages,
       tools: TOOL_DEFS.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })),
-      ...(withTools ? {} : { tool_choice: { type: "none" } }),
+      ...(withTools === true ? {} : { tool_choice: { type: "none" } }),
     }),
   });
   const data = await res.json();
@@ -107,7 +107,7 @@ async function anthropicCall(messages: any[], withTools: boolean): Promise<Turn>
   };
 }
 
-async function openaiCall(messages: any[], withTools: boolean): Promise<Turn> {
+async function openaiCall(messages: any[], withTools: boolean | "omit"): Promise<Turn> {
   const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.OPENAI_API_KEY) headers.authorization = `Bearer ${process.env.OPENAI_API_KEY}`;
@@ -117,8 +117,10 @@ async function openaiCall(messages: any[], withTools: boolean): Promise<Turn> {
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || (process.env.OPENAI_BASE_URL ? "local" : "gpt-5"),
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-      tools: TOOL_DEFS.map((t) => ({ type: "function", function: t })),
-      ...(withTools ? {} : { tool_choice: "none" }),
+      ...(withTools === "omit"
+        ? {}
+        : { tools: TOOL_DEFS.map((t) => ({ type: "function", function: t })), ...(withTools ? {} : { tool_choice: "none" }) }),
+      temperature: 0.2,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -187,26 +189,42 @@ function verify(raw: any, seen: Map<string, Article>): { data: Explanation; remo
 
 // ---------- Agent loop ----------
 
-export async function explain(report: string, emit: Emit): Promise<Explanation> {
-  const p = provider();
-  if (!p) throw new Error("The AI is not connected yet (no API key set).");
-  const call = p === "anthropic" ? anthropicCall : openaiCall;
-  const seen = new Map<string, Article>();
+type Call = (messages: any[], withTools: boolean | "omit") => Promise<Turn>;
 
-  emit({ type: "step", step: "read", status: "running" });
+async function finish(call: Call, messages: any[], finalText: string, seen: Map<string, Article>, emit: Emit) {
+  emit({ type: "step", step: "write", status: "running" });
+  let parsed: any;
+  try {
+    parsed = extractJson(finalText);
+  } catch {
+    // Ask the model once to fix its JSON.
+    const fix = await call(
+      [
+        ...messages,
+        { role: "assistant", content: finalText || "(no answer)" },
+        { role: "user", content: "That was not valid JSON. Return only the JSON object in the required format, nothing else." },
+      ],
+      "omit"
+    );
+    parsed = extractJson(fix.text);
+  }
+  const { data, removed } = verify(parsed, seen);
+  emit({ type: "step", step: "write", status: "done", detail: removed ? `${removed} unverified article(s) removed` : undefined });
+  return data;
+}
+
+/** Tool-calling agent: the model decides when to search and what to read. */
+async function agentLoop(p: "anthropic" | "openai", call: Call, report: string, seen: Map<string, Article>, emit: Emit) {
   const messages: any[] = [{ role: "user", content: `Here is the medical document:\n\n${report}` }];
   let finalText = "";
-
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const lastRound = round === MAX_ROUNDS - 1;
     const turn = await call(messages, !lastRound);
     if (round === 0) emit({ type: "step", step: "read", status: "done" });
-
     if (turn.calls.length === 0 || lastRound) {
       finalText = turn.text;
       break;
     }
-
     if (p === "anthropic") {
       messages.push({ role: "assistant", content: turn.raw });
       const results = [];
@@ -221,24 +239,58 @@ export async function explain(report: string, emit: Emit): Promise<Explanation> 
       }
     }
   }
+  return { messages, finalText };
+}
 
-  emit({ type: "step", step: "write", status: "running" });
-  let parsed: any;
-  try {
-    parsed = extractJson(finalText);
-  } catch {
-    // Ask the model once to fix its JSON.
-    const fix = await call(
-      [
-        ...messages,
-        { role: "assistant", content: finalText || "(no answer)" },
-        { role: "user", content: "That was not valid JSON. Return only the JSON object in the required format, nothing else." },
-      ],
-      false
-    );
-    parsed = extractJson(fix.text);
+/** Backup for models without tool calling: the app searches PubMed itself,
+ *  then gives the abstracts to the model to write the explanation. */
+async function guidedPipeline(call: Call, report: string, seen: Map<string, Article>, emit: Emit) {
+  const q = await call(
+    [
+      {
+        role: "user",
+        content: `Medical document:\n\n${report}\n\nWrite ONE short PubMed search query (2 to 5 English words) about the main condition in this document. Reply with the query only, no quotes, no JSON.`,
+      },
+    ],
+    "omit"
+  );
+  emit({ type: "step", step: "read", status: "done" });
+  const firstLine = q.text.replace(/["'`{}]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  let query = firstLine.slice(0, 80);
+  let found = JSON.parse(await runTool("search_pubmed", { query }, seen, emit)).pmids ?? [];
+  if (!found.length && query.split(" ").length > 2) {
+    query = query.split(" ").slice(0, 2).join(" ");
+    found = JSON.parse(await runTool("search_pubmed", { query }, seen, emit)).pmids ?? [];
   }
-  const { data, removed } = verify(parsed, seen);
-  emit({ type: "step", step: "write", status: "done", detail: removed ? `${removed} unverified article(s) removed` : undefined });
-  return data;
+  const abstracts = found.length ? await runTool("get_abstracts", { pmids: found.slice(0, 4) }, seen, emit) : "[]";
+  const messages: any[] = [
+    {
+      role: "user",
+      content: `Here is the medical document:\n\n${report}\n\nI already searched PubMed for "${query}". These are the ONLY abstracts you may use (JSON):\n${abstracts}\n\nNow write the explanation. Return only the JSON object.`,
+    },
+  ];
+  const turn = await call(messages, "omit");
+  return { messages, finalText: turn.text };
+}
+
+export async function explain(report: string, emit: Emit): Promise<Explanation> {
+  const p = provider();
+  if (!p) throw new Error("The AI is not connected yet (no API key set).");
+  const call: Call = p === "anthropic" ? anthropicCall : openaiCall;
+  const seen = new Map<string, Article>();
+  emit({ type: "step", step: "read", status: "running" });
+
+  if (process.env.AGENT_TOOLS !== "off") {
+    try {
+      const r = await agentLoop(p, call, report, seen, emit);
+      // Only accept the agent's answer if it really read research.
+      if (seen.size > 0) return await finish(call, r.messages, r.finalText, seen, emit);
+    } catch (e) {
+      // Some models do not support tool calling: fall back below.
+      console.warn("Tool-calling agent failed, using guided pipeline:", (e as Error).message);
+      if (/\b(401|402|403|429)\b/.test((e as Error).message)) throw e;
+    }
+  }
+  const r = await guidedPipeline(call, report, seen, emit);
+  return await finish(call, r.messages, r.finalText, seen, emit);
 }

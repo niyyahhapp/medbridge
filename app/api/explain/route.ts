@@ -5,7 +5,7 @@ import { SAMPLE_REPORTS } from "@/lib/reports";
 import { allow, clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // local models can be slower; this only applies on Vercel
+export const maxDuration = 120; // seconds; free AI tiers can be slow when busy
 
 const PER_PERSON = Number(process.env.EXPLAIN_LIMIT_PER_PERSON || 15);
 const TOTAL = Number(process.env.EXPLAIN_LIMIT_TOTAL || 150);

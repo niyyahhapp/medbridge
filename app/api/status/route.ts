@@ -7,5 +7,6 @@ export function GET() {
   return Response.json({
     ai: providerLabel(),
     voice: Boolean(process.env.ELEVENLABS_API_KEY),
+    translate: process.env.DEEPL_API_KEY ? "DeepL" : providerLabel() ? "AI" : null,
   });
 }

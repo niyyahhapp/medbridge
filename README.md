@@ -30,6 +30,9 @@ Set `OPENAI_BASE_URL=https://api.featherless.ai/v1`, `OPENAI_API_KEY` (your Feat
 - **AI agent**: when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENAI_BASE_URL` is set.
 - **Prepared example**: with no AI connected, the five sample reports show explanations written ahead of time by Claude from the linked abstracts; PubMed is still called live and titles/years come from PubMed.
 - **Basic mode**: any other report with no AI connected gets live PubMed results, a built-in plain-language glossary, and direct quotes from abstracts.
+- **Files**: PDFs (including scans) and photos are turned into text in the browser with pdf.js and Tesseract; the file is never uploaded.
+- **Translation**: the explanation (never the report) can be translated with DeepL (`DEEPL_API_KEY`) or, without it, the connected AI. Off in Private mode.
+- **Privacy**: personal details are removed in the browser and again on the server; nothing is stored; Private mode sends nothing to AI companies; delete and auto-delete.
 - **Voice**: ElevenLabs when `ELEVENLABS_API_KEY` is set, otherwise the browser's built-in voice.
 
 ## Deploy

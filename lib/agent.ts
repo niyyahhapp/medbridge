@@ -125,6 +125,7 @@ type Turn = {
 async function anthropicCall(
   messages: any[],
   withTools: boolean | "omit",
+  system: string = SYSTEM_PROMPT,
 ): Promise<Turn> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -136,7 +137,7 @@ async function anthropicCall(
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
       max_tokens: 4000,
-      system: SYSTEM_PROMPT,
+      system,
       messages,
       tools: TOOL_DEFS.map((t) => ({
         name: t.name,
@@ -180,6 +181,7 @@ let preferredModel = 0; // remember a model that worked
 async function openaiCall(
   messages: any[],
   withTools: boolean | "omit",
+  system: string = SYSTEM_PROMPT,
 ): Promise<Turn> {
   const base = (
     process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"
@@ -205,7 +207,7 @@ async function openaiCall(
           ),
           body: JSON.stringify({
             model: models[mi],
-            messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+            messages: [{ role: "system", content: system }, ...messages],
             ...(withTools === "omit"
               ? {}
               : {
@@ -324,7 +326,7 @@ function verify(
 
 // ---------- Agent loop ----------
 
-type Call = (messages: any[], withTools: boolean | "omit") => Promise<Turn>;
+type Call = (messages: any[], withTools: boolean | "omit", system?: string) => Promise<Turn>;
 
 async function finish(
   call: Call,
@@ -496,4 +498,18 @@ export function providerLabel(): string | null {
   if (base.includes("groq")) return "Groq";
   if (/localhost|127\.0\.0\.1/.test(base)) return "a model running on this computer (nothing leaves the device)";
   return new URL(base).hostname;
+}
+
+/** Translate short texts with the connected AI (used when DeepL is not set up). */
+export async function aiTranslate(texts: string[], language: string): Promise<string[]> {
+  const p = provider();
+  if (!p) throw new Error("Translation is not connected.");
+  const call = p === "anthropic" ? anthropicCall : openaiCall;
+  const system =
+    "You are a careful medical translator for patients. Translate faithfully and simply. Keep every number, unit, reference range, PMID and the words' meaning exactly. Do not add or remove information. Return only a JSON array of strings, the same length and order as the input.";
+  const turn = await call([{ role: "user", content: `Translate into ${language}:\n${JSON.stringify(texts)}` }], "omit", system);
+  const t = turn.text;
+  const out = JSON.parse(t.slice(t.indexOf("["), t.lastIndexOf("]") + 1));
+  if (!Array.isArray(out) || out.length !== texts.length) throw new Error("The translation came back incomplete. Please try again.");
+  return out.map(String);
 }

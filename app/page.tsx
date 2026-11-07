@@ -6,6 +6,7 @@ import { SAMPLE_REPORTS } from "@/lib/reports";
 import { OrganFigure, organFrom } from "./OrganFigure";
 import { redact, type Removal } from "@/lib/redact";
 import { fileToText } from "@/lib/fileText";
+import { LANGUAGES } from "@/lib/languages";
 
 const AUTO_DELETE_MINUTES = 10;
 
@@ -50,7 +51,12 @@ export default function Home() {
   // Privacy
   const [privateMode, setPrivateMode] = useState(false);
   const [removed, setRemoved] = useState<Removal[] | null>(null);
-  const [services, setServices] = useState<{ ai: string | null; voice: boolean } | null>(null);
+  const [services, setServices] = useState<{ ai: string | null; voice: boolean; translate: string | null } | null>(null);
+  // Translation of the explanation (never the report)
+  const [lang, setLang] = useState("orig");
+  const [translations, setTranslations] = useState<Record<string, Explanation>>({});
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
   const [cleared, setCleared] = useState<string | null>(null);
   const lastActivity = useRef(Date.now());
 
@@ -58,7 +64,7 @@ export default function Home() {
     fetch("/api/status")
       .then((r) => r.json())
       .then(setServices)
-      .catch(() => setServices({ ai: null, voice: false }));
+      .catch(() => setServices({ ai: null, voice: false, translate: null }));
   }, []);
 
   // Auto-delete: clear the report and explanation after a period with no activity.
@@ -114,6 +120,8 @@ export default function Home() {
     setRemoved(null);
     setSteps(freshSteps());
     setFileStatus(null);
+    setLang("orig");
+    setTranslations({});
     setCleared(message);
   }
 
@@ -125,12 +133,12 @@ export default function Home() {
   }
 
   // Fallback when ElevenLabs is not connected: the browser's built-in voice.
-  function speakWithBrowser(text: string, french: boolean): boolean {
+  function speakWithBrowser(text: string, speechLang: string): boolean {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
     if (!synth) return false;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = french ? "fr-FR" : "en-US";
+    u.lang = speechLang;
     u.rate = 0.95;
     u.onend = () => setVoice("idle");
     u.onerror = () => setVoice("idle");
@@ -146,6 +154,9 @@ export default function Home() {
     setData(null);
     setSteps(freshSteps());
     setCleared(null);
+    setLang("orig");
+    setTranslations({});
+    setTranslateError(null);
     // Remove personal details in the browser, before anything is sent.
     const safe = redact(report);
     setRemoved(safe.removed);
@@ -187,23 +198,48 @@ export default function Home() {
     }
   }
 
+  async function changeLanguage(code: string) {
+    stopAudio();
+    setTranslateError(null);
+    setLang(code);
+    if (code === "orig" || translations[code] || !data) return;
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ data, lang: code }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Translation failed.");
+      setTranslations((t) => ({ ...t, [code]: body.data }));
+    } catch (e) {
+      setTranslateError((e as Error).message);
+      setLang("orig");
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   async function listen() {
     if (!data) return;
     if (voice === "playing") return stopAudio();
     setVoice("loading");
     setVoiceError(null);
+    const view = (lang !== "orig" && translations[lang]) || data;
     const french = /^(Votre|Exemple)/.test(data.summary + "") || data.caution.startsWith("Exemple");
+    const speechLang = lang !== "orig" ? LANGUAGES.find((l) => l.code === lang)?.speech : french ? "fr-FR" : "en-US";
     // In private mode, never send text to a voice company: use the browser's own voice.
-    if (privateMode && speakWithBrowser(textToRead(data), french)) return;
+    if (privateMode && speakWithBrowser(textToRead(view), speechLang!)) return;
     try {
       const res = await fetch("/api/speak", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: textToRead(data) }),
+        body: JSON.stringify({ text: textToRead(view) }),
       });
       if (res.status === 503) {
         // ElevenLabs key not added yet: use the browser voice instead.
-        if (speakWithBrowser(textToRead(data), french)) return;
+        if (speakWithBrowser(textToRead(view), speechLang!)) return;
       }
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Voice is not available.");
       const url = URL.createObjectURL(await res.blob());
@@ -219,6 +255,8 @@ export default function Home() {
   }
 
   const organ = data ? organFrom(data.organ_for_visual) : null;
+  const view = data ? (lang !== "orig" && translations[lang]) || data : null;
+  const rtl = !!LANGUAGES.find((l) => l.code === lang)?.rtl;
   const started = loading || data || error;
 
   return (
@@ -384,8 +422,8 @@ export default function Home() {
             </div>
           )}
 
-          {data && (
-            <article>
+          {data && view && (
+            <article dir={rtl ? "rtl" : undefined}>
               <div className="border-t border-line pt-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-3">
                   <h2 className="text-sm font-medium tracking-wide text-accent uppercase">In short</h2>
@@ -398,13 +436,43 @@ export default function Home() {
                     {voice === "loading" ? "Preparing voice…" : voice === "playing" ? "Stop" : "Listen to this explanation"}
                   </button>
                 </div>
-                <p className="mt-3 font-serif text-2xl leading-snug">{data.summary}</p>
+                <p className="mt-3 font-serif text-2xl leading-snug">{view.summary}</p>
                 {voiceError && <p className="mt-2 text-sm text-danger">{voiceError}</p>}
+                <div dir="ltr" className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <label htmlFor="lang" className="text-muted">
+                    Read in
+                  </label>
+                  <select
+                    id="lang"
+                    value={lang}
+                    onChange={(e) => changeLanguage(e.target.value)}
+                    disabled={translating || privateMode || !services?.translate}
+                    className="border border-line bg-white px-2 py-1 disabled:opacity-50"
+                  >
+                    <option value="orig">Original language</option>
+                    {LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                  {translating && <span className="text-muted">Translating…</span>}
+                  {!translating && lang !== "orig" && (
+                    <span className="text-xs text-muted">
+                      Translated by {services?.translate === "DeepL" ? "DeepL" : "AI"}. Article titles stay in English.
+                    </span>
+                  )}
+                  {privateMode && <span className="text-xs text-muted">Translation is off in Private mode.</span>}
+                  {!privateMode && services && !services.translate && (
+                    <span className="text-xs text-muted">Translation is not connected yet.</span>
+                  )}
+                </div>
+                {translateError && <p className="mt-2 text-sm text-danger">{translateError}</p>}
               </div>
 
-              {data.terms.length > 0 && (
+              {view.terms.length > 0 && (
                 <Section title="Words in your report">
-                  {data.terms.map((t, i) => (
+                  {view.terms.map((t, i) => (
                     <div key={i} className="border-b border-line py-3 last:border-0">
                       <p className="font-medium">{t.term}</p>
                       <p className="mt-1">{t.plain_meaning}</p>
@@ -416,9 +484,9 @@ export default function Home() {
                 </Section>
               )}
 
-              {data.findings.length > 0 && (
+              {view.findings.length > 0 && (
                 <Section title="What your report says">
-                  {data.findings.map((f, i) => (
+                  {view.findings.map((f, i) => (
                     <div key={i} className="border-b border-line py-3 last:border-0">
                       <p className="font-mono text-sm">{f.from_document}</p>
                       <p className="mt-1">{f.explanation}</p>
@@ -437,13 +505,13 @@ export default function Home() {
               )}
 
               <Section title="What research says">
-                {data.research.length === 0 ? (
+                {view.research.length === 0 ? (
                   <p className="py-3 text-muted">
                     The agent did not find research it could rely on for this report, so it does not make any research
                     claims.
                   </p>
                 ) : (
-                  data.research.map((r) => (
+                  view.research.map((r) => (
                     <div key={r.pmid} className="border-b border-line py-3 last:border-0">
                       <p className="font-medium">
                         <a href={`https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/`} target="_blank" rel="noreferrer">
@@ -460,16 +528,16 @@ export default function Home() {
                 )}
               </Section>
 
-              {data.follow_up && (
+              {view.follow_up && (
                 <Section title="What your report says about next steps">
-                  <p className="py-3">{data.follow_up}</p>
+                  <p className="py-3">{view.follow_up}</p>
                 </Section>
               )}
 
-              {data.questions_to_ask.length > 0 && (
+              {view.questions_to_ask.length > 0 && (
                 <Section title="Questions you could ask">
                   <ul className="py-1">
-                    {data.questions_to_ask.map((q, i) => (
+                    {view.questions_to_ask.map((q, i) => (
                       <li key={i} className="border-b border-line py-2 last:border-0">
                         {q}
                       </li>
@@ -478,7 +546,7 @@ export default function Home() {
                 </Section>
               )}
 
-              {data.caution && <p className="mt-6 text-sm text-muted">{data.caution}</p>}
+              {view.caution && <p className="mt-6 text-sm text-muted">{view.caution}</p>}
             </article>
           )}
         </section>
@@ -513,7 +581,7 @@ function PrivacyPanel({
 }: {
   privateMode: boolean;
   setPrivateMode: (v: boolean) => void;
-  services: { ai: string | null; voice: boolean } | null;
+  services: { ai: string | null; voice: boolean; translate: string | null } | null;
   removed: Removal[] | null;
 }) {
   const ai = services?.ai;
@@ -582,6 +650,12 @@ function PrivacyPanel({
             {privateMode || !services?.voice
               ? "uses your browser's own voice, so nothing is sent anywhere."
               : "if you press Listen, the explanation (not your report) is sent to ElevenLabs to make the audio."}
+          </li>
+          <li className="border-b border-line py-2">
+            <span className="font-medium">Translation:</span>{" "}
+            {privateMode || !services?.translate
+              ? "not used."
+              : `only if you choose a language, the explanation (not your report) is sent to ${services.translate === "DeepL" ? "DeepL" : ai} to translate it.`}
           </li>
           <li className="py-2">
             <span className="font-medium">This page:</span> keeps nothing after you close it. Use &ldquo;Delete

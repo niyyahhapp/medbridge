@@ -726,40 +726,71 @@ function SentPreview({ report }: { report: string }) {
   );
 }
 
-/** The 2-minute launch video: a real recorded run with a fictional patient. */
+/** The launch film (motion design) and the recorded demo, both with fictional patients. */
+const VIDEOS = {
+  film: {
+    label: "Watch the launch film",
+    base: "/medbridge-launch",
+    caption: "The MedBridge launch film. The patient shown is fictional.",
+  },
+  demo: {
+    label: "Watch the demo",
+    base: "/medbridge-demo",
+    caption: "A real run of MedBridge with a fictional patient. The AI\u2019s waiting time is sped up and labelled in the video.",
+  },
+} as const;
+
 function LaunchVideo() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<keyof typeof VIDEOS | null>(null);
+  const v = open ? VIDEOS[open] : null;
   return (
     <div className="mt-4">
-      {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 border border-ink px-4 py-2 text-sm font-medium hover:bg-ink hover:text-paper"
-        >
-          <span aria-hidden="true">▶</span> Watch the demo
-        </button>
+      {!v ? (
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setOpen("film")}
+            className="inline-flex items-center gap-2 bg-ink px-4 py-2 text-sm font-medium text-paper hover:bg-accent"
+          >
+            <span aria-hidden="true">▶</span> {VIDEOS.film.label}
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen("demo")}
+            className="inline-flex items-center gap-2 border border-ink px-4 py-2 text-sm font-medium hover:bg-ink hover:text-paper"
+          >
+            <span aria-hidden="true">▶</span> {VIDEOS.demo.label}
+          </button>
+        </div>
       ) : (
-        <figure className="max-w-3xl">
+        <figure className="max-w-4xl">
           <video
-            poster="/medbridge-demo-poster.jpg"
+            key={open}
+            poster={`${v.base}-poster.jpg`}
             controls
             autoPlay
             playsInline
             preload="metadata"
             className="w-full border border-line bg-white"
           >
-            <source src="/medbridge-demo.webm" type="video/webm" />
-            <source src="/medbridge-demo.mp4" type="video/mp4" />
+            <source src={`${v.base}.webm`} type="video/webm" />
+            <source src={`${v.base}.mp4`} type="video/mp4" />
             <track kind="descriptions" />
           </video>
           <figcaption className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted">
-            <span>
-              A real run of MedBridge with a fictional patient. The AI&rsquo;s waiting time is sped up and labelled in the video.
+            <span>{v.caption}</span>
+            <span className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => setOpen(open === "film" ? "demo" : "film")}
+                className="text-accent underline underline-offset-4"
+              >
+                {open === "film" ? VIDEOS.demo.label : VIDEOS.film.label}
+              </button>
+              <button type="button" onClick={() => setOpen(null)} className="text-accent underline underline-offset-4">
+                Close video
+              </button>
             </span>
-            <button type="button" onClick={() => setOpen(false)} className="text-accent underline underline-offset-4">
-              Close video
-            </button>
           </figcaption>
         </figure>
       )}

@@ -726,7 +726,7 @@ function SentPreview({ report }: { report: string }) {
   );
 }
 
-/** The 60-second launch video: a real recorded run with a fictional patient. */
+/** The 2-minute launch video: a real recorded run with a fictional patient. */
 function LaunchVideo() {
   const [open, setOpen] = useState(false);
   return (
@@ -737,7 +737,7 @@ function LaunchVideo() {
           onClick={() => setOpen(true)}
           className="inline-flex items-center gap-2 border border-ink px-4 py-2 text-sm font-medium hover:bg-ink hover:text-paper"
         >
-          <span aria-hidden="true">▶</span> Watch the 60-second demo
+          <span aria-hidden="true">▶</span> Watch the demo
         </button>
       ) : (
         <figure className="max-w-3xl">

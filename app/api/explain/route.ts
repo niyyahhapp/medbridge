@@ -40,7 +40,7 @@ export async function POST(req: Request) {
             : await basicExplain(report, emit);
         emit({ type: "result", data });
       } catch (e) {
-        console.error("explain failed:", (e as Error).message); // message only, never the report
+        console.error("explain failed:", (e as Error).message.match(/AI error \d+|PubMed[^.]*\(\d+\)/)?.[0] ?? "error"); // code only, never the report
         emit({ type: "error", message: (e as Error).message || "Something went wrong." });
       } finally {
         controller.close();

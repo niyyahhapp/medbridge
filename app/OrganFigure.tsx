@@ -83,7 +83,7 @@ export function OrganFigure({ organ }: { organ: Organ }) {
       {/* Label */}
       <path d={`M${l.from[0]} ${l.from[1]} L${l.to[0]} ${l.to[1]}`} stroke={ACCENT} strokeWidth="1" />
       <circle cx={l.from[0]} cy={l.from[1]} r="2" fill={ACCENT} />
-      <text x={l.to[0] + 4} y={l.to[1] + 4} fontSize="13" fontFamily="Inter, sans-serif" fill={ACCENT}>
+      <text x={l.to[0] + 4} y={l.to[1] + 4} fontSize="13" fontFamily="Inter Variable, Inter, sans-serif" fill={ACCENT}>
         {l.text}
       </text>
     </svg>

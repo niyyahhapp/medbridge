@@ -497,10 +497,8 @@ export async function explain(
         return await finish(call, r.messages, r.finalText, seen, emit);
     } catch (e) {
       // Some models do not support tool calling: fall back below.
-      console.warn(
-        "Tool-calling agent failed, using guided pipeline:",
-        (e as Error).message,
-      );
+      // Log only the error code, never message text that could echo the report.
+      console.warn("Tool-calling agent failed, using guided pipeline:", (e as Error).message.match(/AI error \d+/)?.[0] ?? "error");
       if (/\b(401|402|403|429)\b/.test((e as Error).message)) throw e;
     }
   }

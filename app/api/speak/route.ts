@@ -40,8 +40,8 @@ export async function POST(req: Request) {
       }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      console.error("ElevenLabs error", res.status, err.slice(0, 300));
+      await res.text().catch(() => ""); // discard the body
+      console.error("ElevenLabs error", res.status); // status only, never the text
       return Response.json({ error: `Voice error (${res.status}).` }, { status: 502 });
     }
     return new Response(res.body, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });

@@ -132,13 +132,33 @@ export default function Home() {
     setVoice("idle");
   }
 
-  // Fallback when ElevenLabs is not connected: the browser's built-in voice.
-  function speakWithBrowser(text: string, speechLang: string): boolean {
+  // Browser voice, used when ElevenLabs is not connected or in Private mode.
+  // Only voices built into the device are used: some browsers also offer online
+  // voices that send the text to a company, and those are skipped on purpose.
+  async function speakWithBrowser(text: string, speechLang: string): Promise<boolean> {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
     if (!synth) return false;
+    let voices = synth.getVoices();
+    if (!voices.length) {
+      await new Promise<void>((res) => {
+        const done = () => res();
+        synth.addEventListener("voiceschanged", done, { once: true });
+        setTimeout(done, 1500);
+      });
+      voices = synth.getVoices();
+    }
+    const prefix = speechLang.slice(0, 2).toLowerCase();
+    const local = voices.filter((v) => v.localService && v.lang.toLowerCase().startsWith(prefix));
+    const voice = local.find((v) => v.lang.toLowerCase() === speechLang.toLowerCase()) ?? local[0];
+    if (!voice) {
+      setVoice("error");
+      setVoiceError("This device has no built-in voice for this language, so nothing was read aloud and nothing was sent.");
+      return true;
+    }
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = speechLang;
+    u.voice = voice;
+    u.lang = voice.lang;
     u.rate = 0.95;
     u.onend = () => setVoice("idle");
     u.onerror = () => setVoice("idle");
@@ -230,7 +250,7 @@ export default function Home() {
     const french = /^(Votre|Exemple)/.test(data.summary + "") || data.caution.startsWith("Exemple");
     const speechLang = lang !== "orig" ? LANGUAGES.find((l) => l.code === lang)?.speech : french ? "fr-FR" : "en-US";
     // In private mode, never send text to a voice company: use the browser's own voice.
-    if (privateMode && speakWithBrowser(textToRead(view), speechLang!)) return;
+    if (privateMode && (await speakWithBrowser(textToRead(view), speechLang!))) return;
     try {
       const res = await fetch("/api/speak", {
         method: "POST",
@@ -239,7 +259,7 @@ export default function Home() {
       });
       if (res.status === 503) {
         // ElevenLabs key not added yet: use the browser voice instead.
-        if (speakWithBrowser(textToRead(view), speechLang!)) return;
+        if (await speakWithBrowser(textToRead(view), speechLang!)) return;
       }
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Voice is not available.");
       const url = URL.createObjectURL(await res.blob());
@@ -602,8 +622,8 @@ function PrivacyPanel({
         <span>
           <span className="font-medium">Private mode</span>
           <span className="block text-sm text-muted">
-            Your report is not sent to any AI company. You get plain meanings of the words and real research from PubMed,
-            without an AI-written explanation.
+            Your report is not sent to any AI company, and translation and online voices are switched off. You get plain
+            meanings of the words and real research from PubMed, without an AI-written explanation.
           </span>
         </span>
       </label>
@@ -626,12 +646,15 @@ function PrivacyPanel({
         <ul className="mt-2">
           <li className="border-b border-line py-2">
             <span className="font-medium">In your browser first:</span> attached files (PDFs and photos) are read on your
-            device and are never uploaded. Names, dates of birth, phone numbers, emails, addresses and ID numbers are
-            removed before anything is sent. Medical values are kept.
+            device and are never uploaded. MedBridge removes personal details it can recognise, such as a labelled
+            name, date of birth, health card or record number, phone number, email, address, and doctors&rsquo; names.
+            You can see exactly what was removed above. It can miss details written in an unusual way, such as a name in
+            the middle of a sentence, so please check before you press Explain.
           </li>
           <li className="border-b border-line py-2">
-            <span className="font-medium">Our server:</span> uses the report only while explaining it. It is never saved,
-            never logged, and there is no database.
+            <span className="font-medium">Our server:</span> uses the report only while explaining it. Our code does not
+            save it or write it to logs, and there is no database. Our hosting service (Vercel) keeps standard records of
+            each visit, such as the time and IP address, but not the report.
           </li>
           <li className="border-b border-line py-2">
             <span className="font-medium">AI company:</span>{" "}
@@ -644,13 +667,13 @@ function PrivacyPanel({
                 : "none is connected right now, so your report is not sent to any AI company."}
           </li>
           <li className="border-b border-line py-2">
-            <span className="font-medium">PubMed:</span> receives only short search words, such as &ldquo;fatty liver
-            lifestyle&rdquo;, never your report.
+            <span className="font-medium">PubMed:</span> receives only short medical search words, such as &ldquo;fatty
+            liver lifestyle&rdquo;, sent from our server. It never receives your report or your IP address.
           </li>
           <li className="border-b border-line py-2">
             <span className="font-medium">Voice:</span>{" "}
             {privateMode || !services?.voice
-              ? "uses your browser's own voice, so nothing is sent anywhere."
+              ? "uses only a voice built into your device, so the text is not sent anywhere. If your device has no built-in voice for the language, nothing is read aloud."
               : "if you press Listen, the explanation (not your report) is sent to ElevenLabs to make the audio."}
           </li>
           <li className="border-b border-line py-2">
@@ -660,8 +683,9 @@ function PrivacyPanel({
               : `only if you choose a language, the explanation (not your report) is sent to ${services.translate === "DeepL" ? "DeepL" : ai} to translate it.`}
           </li>
           <li className="py-2">
-            <span className="font-medium">This page:</span> keeps nothing after you close it. Use &ldquo;Delete
-            everything now&rdquo; at any time.
+            <span className="font-medium">This page:</span> stores nothing in your browser, so nothing is kept after you
+            close it. Use &ldquo;Delete everything now&rdquo; at any time. Fonts and all other files come from our own
+            site, so loading the page does not contact Google or other companies.
           </li>
         </ul>
       </details>

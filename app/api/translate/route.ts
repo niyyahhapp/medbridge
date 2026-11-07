@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const translated = process.env.DEEPL_API_KEY ? await deepl(texts, language.deepl) : await aiTranslate(texts, language.name);
     return Response.json({ data: rebuild(data, translated), by: process.env.DEEPL_API_KEY ? "DeepL" : "AI" });
   } catch (e) {
-    console.error("translate failed:", (e as Error).message);
+    console.error("translate failed:", (e as Error).message.match(/\d{3}/)?.[0] ?? "error"); // code only
     return Response.json({ error: (e as Error).message || "Translation failed." }, { status: 500 });
   }
 }

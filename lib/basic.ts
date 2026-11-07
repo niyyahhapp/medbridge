@@ -3,11 +3,17 @@
 import type { Emit, Explanation } from "./agent";
 import { GLOSSARY } from "./glossary";
 import { rangeSentence, readRange } from "./ranges";
+import { findMedicalTerms } from "./terms";
+import { defineTerm, type Definition } from "./define";
 import { getAbstracts, searchPubmed, type Article } from "./pubmed";
 
 /** Where PubMed results come from: directly (server) or through our search-words-only endpoint (browser). */
-export type ResearchDeps = { searchPubmed: (q: string, max?: number) => Promise<string[]>; getAbstracts: (ids: string[]) => Promise<Article[]> };
-const SERVER_DEPS: ResearchDeps = { searchPubmed, getAbstracts };
+export type ResearchDeps = {
+  searchPubmed: (q: string, max?: number) => Promise<string[]>;
+  getAbstracts: (ids: string[]) => Promise<Article[]>;
+  define: (term: string) => Promise<Definition | null>;
+};
+const SERVER_DEPS: ResearchDeps = { searchPubmed, getAbstracts, define: defineTerm };
 
 function conclusion(abstract: string): string {
   const m = abstract.match(/(?:^|\n)(?:CONCLUSIONS?|INTERPRETATION|CONCLUSIONS AND RELEVANCE)[^:\n]*:\s*([^\n]+)/i);
@@ -37,19 +43,30 @@ export async function basicExplain(report: string, emit: Emit, deps: ResearchDep
     .match(/(?:consistent with|compatible(?:s)? avec|suggestive of|in keeping with|suspicious for|impression\s*:|diagnosis\s*:|conclusion\s*:)\s*(?:an?\s+|une?\s+)?([^.;\n]{3,80})/i)?.[1]
     ?.replace(/^(mild|moderate|severe|early|small|légère|modérée)\s+/i, "")
     .trim();
-  emit({ type: "step", step: "read", status: "done", detail: `${hits.length} medical terms found` });
+  // More medical words, found by how they are built (no AI), defined by MedlinePlus or MeSH.
+  // Only each single word is looked up, never the report.
+  const extra = findMedicalTerms(report);
+  const defined = (await Promise.all(extra.map((t) => deps.define(t).catch(() => null)))).filter((d): d is Definition => !!d);
+  emit({ type: "step", step: "read", status: "done", detail: `${hits.length + defined.length} medical terms found` });
 
   // Search PubMed with the main topic, falling back to shorter searches.
   // Topics from the glossary; the one named in the diagnosis comes first.
-  const topics = hits
-    .filter((h) => h.query)
-    .sort((a, b) => Number(!!diagnosis && b.match.test(diagnosis)) - Number(!!diagnosis && a.match.test(diagnosis)));
+  // A topic whose value is inside its reference range is not the main concern, so it goes last.
+  const normalOnly = (h: (typeof hits)[number]) => {
+    const ls = lines.filter((l) => h.match.test(l));
+    return ls.length > 0 && ls.every((l) => readRange(l)?.status === "inside");
+  };
+  const rank = (h: (typeof hits)[number]) => (diagnosis && h.match.test(diagnosis) ? 0 : normalOnly(h) ? 2 : 1);
+  const topics = hits.filter((h) => h.query).sort((a, b) => rank(a) - rank(b));
   const queries = [
     ...(diagnosis && !topics.some((t) => t.match.test(diagnosis)) && /^[\x00-\x7F]+$/.test(diagnosis)
       ? [`${diagnosis}[tiab] AND review[pt]`, diagnosis]
       : []),
-    ...topics.map((t) => t.query!),
-    ...topics.map((t) => t.term.replace(/\s*\(.*\)/, "")),
+    ...topics.filter((t) => !normalOnly(t)).map((t) => t.query!),
+    ...topics.filter((t) => !normalOnly(t)).map((t) => t.term.replace(/\s*\(.*\)/, "")),
+    // Words found by the word finder and confirmed by MedlinePlus / MeSH
+    ...defined.flatMap((d) => [`${d.term}[ti] AND review[pt]`, d.term]),
+    ...topics.filter(normalOnly).map((t) => t.query!),
   ].filter((q, i, a) => a.indexOf(q) === i);
   let pmids: string[] = [];
   for (const q of queries.slice(0, 3)) {
@@ -103,11 +120,19 @@ export async function basicExplain(report: string, emit: Emit, deps: ResearchDep
         : main
           ? `Your document talks about ${((t) => (/[A-Z].*[A-Z0-9]/.test(t) ? t : t.toLowerCase()))(main.replace(/\s*\(.*\)/, ""))}.`
           : "Here is what your document says, in plain words.") + rangeSummary,
-    terms: hits.map((h) => ({
-      term: h.term,
-      plain_meaning: h.plain,
-      in_your_document: lines.find((l) => h.match.test(l)) ?? "",
-    })),
+    terms: [
+      ...hits.map((h) => ({
+        term: h.term,
+        plain_meaning: h.plain,
+        in_your_document: lines.find((l) => h.match.test(l)) ?? "",
+      })),
+      ...defined.map((d) => ({
+        term: d.term.charAt(0).toUpperCase() + d.term.slice(1),
+        plain_meaning: d.meaning,
+        in_your_document: lines.find((l) => l.toLowerCase().includes(d.term.toLowerCase())) ?? "",
+        source: { name: d.source, url: d.url },
+      })),
+    ],
     findings,
     research,
     organ_for_visual: hits.find((h) => h.organ)?.organ ?? "",

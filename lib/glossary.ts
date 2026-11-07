@@ -191,5 +191,10 @@ export const GLOSSARY: GlossaryEntry[] = [
   { term: "Elevated / above range", match: /\b(elevated|raised|high)\b|above (the )?(reference|normal)/i, plain: "Higher than the usual range written in the report." },
   { term: "mIU/L", match: /\bmIU\/L\b/i, plain: "A unit used to measure hormones such as TSH in the blood." },
   { term: "pmol/L", match: /\bpmol\/L\b/i, plain: "A unit used to measure very small amounts of a substance, such as thyroid hormone, in the blood." },
+  { term: "MRI", match: /\bMRI\b/, plain: "A scan that uses strong magnets and radio waves to make detailed pictures of the inside of the body. It does not use radiation." },
+  { term: "CT scan", match: /\bCT\b|computed tomography/i, plain: "A scan that uses X-rays and a computer to make detailed cross-section pictures of the body." },
+  { term: "Echocardiogram (echo)", match: /\becho(cardiogram)?\b/i, plain: "An ultrasound of the heart. It shows how the heart's chambers and valves are working." },
+  { term: "MCV", match: /\bMCV\b/, plain: "Mean corpuscular volume: the average size of your red blood cells. Smaller than usual is called microcytic." },
+  { term: "Herniation", match: /herniat/i, plain: "When part of something pushes out of its usual place, for example a spinal disc bulging out." },
 ];
 

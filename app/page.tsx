@@ -518,6 +518,14 @@ export default function Home() {
                       {t.in_your_document && (
                         <p className="mt-1 text-sm text-muted">In your report: {t.in_your_document}</p>
                       )}
+                      {t.source && (
+                        <p className="mt-1 text-xs text-muted">
+                          Meaning from{" "}
+                          <a href={t.source.url} target="_blank" rel="noreferrer">
+                            {t.source.name}
+                          </a>
+                        </p>
+                      )}
                     </div>
                   ))}
                 </Section>
@@ -641,7 +649,8 @@ function PrivacyPanel({
           <span className="block text-sm text-muted">
             Your report never leaves your device. The explanation is built inside your browser with exact rules (no AI):
             each value is compared with the range written in your report, words are explained from our glossary, and only
-            short search words (like &ldquo;fatty liver&rdquo;) are sent out to find PubMed research. Translation and online
+            short search words (like &ldquo;fatty liver&rdquo;) and single medical words are sent out, to find PubMed research
+            and trusted meanings from the U.S. National Library of Medicine. Translation and online
             voices are off.
           </span>
         </span>
@@ -673,7 +682,7 @@ function PrivacyPanel({
           <li className="border-b border-line py-2">
             <span className="font-medium">Our server:</span>{" "}
             {privateMode
-              ? "never receives your report in Private mode, only short search words for PubMed."
+              ? "never receives your report in Private mode, only short search words for PubMed and single medical words to look up their meaning."
               : "uses the report only while explaining it."}{" "}
             {privateMode ? null : <> Our code does not
             save it or write it to logs, and there is no database.</>}{" "}Our hosting service (Vercel) keeps standard records of

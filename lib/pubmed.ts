@@ -14,7 +14,7 @@ export type Article = {
 
 // NCBI allows 3 requests per second without an API key. Space requests out.
 let lastRequest = 0;
-async function throttledFetch(url: string): Promise<Response> {
+export async function throttledFetch(url: string): Promise<Response> {
   const wait = lastRequest + 350 - Date.now();
   lastRequest = Math.max(Date.now(), lastRequest + 350);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));

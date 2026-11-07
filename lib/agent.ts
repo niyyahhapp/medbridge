@@ -5,7 +5,7 @@ import { stripViolations, treatmentViolations } from "./safety";
 
 export type Explanation = {
   summary: string;
-  terms: { term: string; plain_meaning: string; in_your_document: string }[];
+  terms: { term: string; plain_meaning: string; in_your_document: string; source?: { name: string; url: string } }[];
   findings: { from_document: string; explanation: string }[];
   research: {
     pmid: string;

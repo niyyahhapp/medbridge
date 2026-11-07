@@ -11,6 +11,14 @@ import { privateExplain } from "@/lib/privateMode";
 
 const AUTO_DELETE_MINUTES = 10;
 
+const HOW = [
+  { title: "Plain words", text: "Every medical word explained calmly, using your report's exact numbers and wording." },
+  { title: "Real research", text: "An AI agent searches PubMed and reads the abstracts. Our code checks every article really exists." },
+  { title: "Private by design", text: "Personal details are removed on your device. Private mode keeps your report on your device." },
+  { title: "Safety first", text: "A safety check removes any treatment advice. MedBridge explains. It never diagnoses." },
+  { title: "Your language, out loud", text: "Read the explanation in eight languages, or listen to it." },
+];
+
 type StepState = { status: "waiting" | "running" | "done"; detail?: string };
 
 const STEP_LABELS: { key: Step; label: string }[] = [
@@ -296,34 +304,70 @@ export default function Home() {
   const started = loading || data || error;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-12">
-      <header className="border-b border-line pb-6">
-        <p className="text-sm font-medium tracking-wide text-accent uppercase">MedBridge</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight sm:text-4xl">
-          Understand your medical report, in plain words.
+    <main>
+      <div className="bg-mint px-4 py-2 text-center text-xs text-ink sm:text-sm">
+        Built for the AI for Humanity hackathon · Every example uses a fictional patient
+      </div>
+
+      <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-8">
+        <a href="#top" className="flex items-center gap-2 text-ink no-underline">
+          <BridgeMark />
+          <span className="font-serif text-2xl">MedBridge</span>
+        </a>
+        <div className="hidden items-center gap-7 text-sm md:flex">
+          <a href="#try" className="text-ink no-underline hover:text-accent">Try it</a>
+          <a href="#how" className="text-ink no-underline hover:text-accent">How it works</a>
+          <a href="#film" className="text-ink no-underline hover:text-accent">Film</a>
+        </div>
+        <a href="#try" className="rounded-xl bg-mint px-4 py-2 text-sm font-medium text-ink no-underline hover:bg-[#bfe6d1]">
+          Explain a report
+        </a>
+      </nav>
+
+      <header id="top" className="mx-auto max-w-4xl px-4 pt-10 pb-14 text-center sm:px-8 sm:pt-16">
+        <span className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-1.5 font-serif text-lg text-paper italic">
+          <BridgeMark light /> For patients
+        </span>
+        <h1 className="mt-6 font-serif text-5xl leading-[1.05] tracking-tight sm:text-7xl">
+          Understand your report, <em className="text-accent">in plain words</em>
         </h1>
-        <p className="mt-2 max-w-2xl text-muted">
-          Paste a report. An AI agent searches real research on PubMed and explains what your report says, with a link to
-          every article it uses. You can also listen to the explanation.
+        <p className="mx-auto mt-6 max-w-2xl text-lg text-muted">
+          Paste or photograph a medical report. An AI agent explains it calmly, links every claim to real research on
+          PubMed, and never diagnoses.
         </p>
-        <LaunchVideo />
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <a href="#try" className="rounded-xl bg-mint px-6 py-3 font-medium text-ink no-underline hover:bg-[#bfe6d1]">
+            Try it now
+          </a>
+          <a href="#film" className="rounded-xl bg-ink px-6 py-3 font-medium text-paper no-underline hover:bg-accent">
+            Watch the film
+          </a>
+        </div>
+        <ul className="mx-auto mt-12 flex max-w-3xl flex-wrap justify-center gap-x-8 gap-y-2 text-sm text-muted">
+          <li>Research from PubMed</li>
+          <li>Meanings from MedlinePlus</li>
+          <li>Personal details removed on your device</li>
+          <li>Voice by ElevenLabs</li>
+        </ul>
       </header>
 
-      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <section id="try" className="mx-auto max-w-6xl scroll-mt-6 px-3 sm:px-6">
+        <div className="rounded-[2rem] bg-sand p-3 sm:p-6 lg:p-8">
+          <p className="mb-5 flex items-center gap-2 px-2 text-sm text-ink"><span aria-hidden="true">+</span> Try it with a fictional report</p>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6">
         {/* Left column */}
-        <section aria-labelledby="report-label">
+        <section aria-labelledby="report-label" className="self-start rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(26,37,48,.06),0_12px_32px_rgba(26,37,48,.06)] sm:p-7">
           <label id="report-label" htmlFor="report" className="font-serif text-xl">
             The report
           </label>
 
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <span className="text-muted">Try a fictional report:</span>
+          <div className="mt-3 flex flex-wrap gap-2 text-sm">
             {SAMPLE_REPORTS.map((r) => (
               <button
                 key={r.label}
                 type="button"
                 onClick={() => setReport(r.text)}
-                className={`underline underline-offset-4 ${report === r.text ? "text-ink" : "text-accent"}`}
+                className={`rounded-full border px-3 py-1 transition ${report === r.text ? "border-ink bg-ink text-paper" : "border-line text-ink hover:border-ink"}`}
               >
                 {r.label}
               </button>
@@ -341,18 +385,18 @@ export default function Home() {
               setDragging(false);
               handleFile(e.dataTransfer.files?.[0]);
             }}
-            className={`relative mt-3 ${dragging ? "outline-2 outline-offset-2 outline-dashed outline-accent" : ""}`}
+            className={`relative mt-4 rounded-2xl ${dragging ? "outline-2 outline-offset-2 outline-dashed outline-accent" : ""}`}
           >
             <textarea
               id="report"
               value={report}
               onChange={(e) => setReport(e.target.value)}
               rows={9}
-              className="w-full border border-line bg-white p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
+              className="w-full rounded-2xl border border-line bg-paper p-4 font-mono text-sm leading-relaxed outline-none focus:border-accent"
               placeholder="Paste the text of a medical report here, or drop a PDF or a photo of it."
             />
             {dragging && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-paper/90 text-accent">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-paper/90 text-accent">
                 Drop the file to read it on this device
               </div>
             )}
@@ -362,9 +406,9 @@ export default function Home() {
               type="button"
               onClick={() => fileInput.current?.click()}
               disabled={fileStatus?.kind === "busy"}
-              className="border border-ink px-3 py-1.5 font-medium hover:bg-ink hover:text-paper disabled:opacity-50"
+              className="rounded-xl border border-line px-3 py-1.5 font-medium hover:border-ink disabled:opacity-50"
             >
-              Attach a file
+              📎 Attach a file
             </button>
             <span className="text-xs text-muted">PDF, photo or text file. Or drag it onto the box. It is read on your device.</span>
             <input
@@ -387,7 +431,7 @@ export default function Home() {
             type="button"
             onClick={run}
             disabled={loading || fileStatus?.kind === "busy" || report.trim().length < 10}
-            className="mt-3 w-full bg-ink px-5 py-3 font-medium text-paper transition hover:bg-accent disabled:opacity-50 sm:w-auto"
+            className="mt-4 w-full rounded-xl bg-ink px-6 py-3 font-medium text-paper transition hover:bg-accent disabled:opacity-50"
           >
             {loading ? "Explaining…" : "Explain this report"}
           </button>
@@ -440,16 +484,22 @@ export default function Home() {
         </section>
 
         {/* Right column */}
-        <section aria-live="polite" className="min-w-0">
+        <section aria-live="polite" className="min-w-0 rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(26,37,48,.06),0_12px_32px_rgba(26,37,48,.06)] sm:p-7">
+          <div className="mb-5 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-lg border border-line px-2.5 py-1.5">📄 Plain-language explanation</span>
+            <span className="rounded-lg border border-line px-2.5 py-1.5">PubMed-verified</span>
+            <span className="rounded-lg border border-line px-2.5 py-1.5">Safety-checked</span>
+            {privateMode && <span className="rounded-lg bg-mint px-2.5 py-1.5">Private mode</span>}
+          </div>
           {!started && (
-            <p className="border-t border-line pt-4 text-muted">
+            <p className="text-muted">
               The explanation will appear here. Choose a fictional report or paste your own, then press
               &ldquo;Explain this report&rdquo;.
             </p>
           )}
 
           {loading && !data && (
-            <p className="border-t border-line pt-4 text-muted">
+            <p className="text-muted">
               Reading the report and searching PubMed. This takes about 20–40 seconds.
             </p>
           )}
@@ -463,16 +513,16 @@ export default function Home() {
 
           {data && view && (
             <article dir={rtl ? "rtl" : undefined}>
-              <div className="border-t border-line pt-4">
+              <div>
                 <div className="flex flex-wrap items-baseline justify-between gap-3">
                   <h2 className="text-sm font-medium tracking-wide text-accent uppercase">In short</h2>
                   <button
                     type="button"
                     onClick={listen}
                     disabled={voice === "loading"}
-                    className="border border-ink px-3 py-1.5 text-sm font-medium hover:bg-ink hover:text-paper disabled:opacity-50"
+                    className="rounded-xl bg-mint px-3 py-1.5 text-sm font-medium hover:bg-[#bfe6d1] disabled:opacity-50"
                   >
-                    {voice === "loading" ? "Preparing voice…" : voice === "playing" ? "Stop" : "Listen to this explanation"}
+                    🔊 {voice === "loading" ? "Preparing voice…" : voice === "playing" ? "Stop" : "Listen to this explanation"}
                   </button>
                 </div>
                 <p className="mt-3 font-serif text-2xl leading-snug">{view.summary}</p>
@@ -486,7 +536,7 @@ export default function Home() {
                     value={lang}
                     onChange={(e) => changeLanguage(e.target.value)}
                     disabled={translating || privateMode || !services?.translate}
-                    className="border border-line bg-white px-2 py-1 disabled:opacity-50"
+                    className="rounded-lg border border-line bg-white px-2 py-1 disabled:opacity-50"
                   >
                     <option value="orig">Original language</option>
                     {LANGUAGES.map((l) => (
@@ -598,14 +648,58 @@ export default function Home() {
           )}
         </section>
       </div>
+        </div>
+      </section>
 
-      <footer className="mt-16 border-t border-line pt-4 text-xs leading-relaxed text-muted">
-        MedBridge explains information. It does not diagnose, recommend treatment, or replace your healthcare
-        professional.{" "}
-        {data?.caution.startsWith("Basic mode") || data?.caution.startsWith("Private mode")
-          ? "This explanation was put together automatically and has not been reviewed by a clinician."
-          : "This explanation was written by AI and has not been reviewed by a clinician."}{" "}
-        The sample patients are fictional. Research comes from PubMed; voice by ElevenLabs.
+      <section id="how" className="mx-auto max-w-6xl scroll-mt-6 px-4 py-24 sm:px-8">
+        <div className="grid gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start">
+          <div>
+            <p className="flex items-center gap-2 text-sm"><span aria-hidden="true">+</span> How it works</p>
+            <h2 className="mt-4 font-serif text-4xl leading-tight sm:text-5xl">
+              <em>Every</em> claim, linked to real research.
+            </h2>
+            <p className="mt-4 max-w-md text-muted">
+              MedBridge explains what your report says. It never diagnoses, never recommends treatment, and shows you where
+              every fact comes from.
+            </p>
+            <ul className="mt-10">
+              {HOW.map((h) => (
+                <li key={h.title} className="border-t border-line py-5">
+                  <p className="font-serif text-2xl">{h.title}</p>
+                  <p className="mt-1 max-w-md text-sm text-muted">{h.text}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div id="film" className="scroll-mt-6 lg:sticky lg:top-8">
+            <FilmPlayer />
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-4xl px-4 pb-24 text-center sm:px-8">
+        <p className="flex items-center justify-center gap-2 text-sm"><span aria-hidden="true">+</span> AI for humanity</p>
+        <h2 className="mt-4 font-serif text-4xl leading-tight sm:text-6xl">
+          Medical knowledge shouldn&rsquo;t stop at the <em className="text-accent">doctor&rsquo;s desk</em>.
+        </h2>
+        <a href="#try" className="mt-8 inline-block rounded-xl bg-mint px-6 py-3 font-medium text-ink no-underline hover:bg-[#bfe6d1]">
+          Explain a report
+        </a>
+      </section>
+
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-8 text-xs leading-relaxed text-muted sm:px-8">
+          <p className="flex items-center gap-2 text-sm text-ink"><BridgeMark /> MedBridge</p>
+          <p>
+            MedBridge explains information. It does not diagnose, recommend treatment, or replace your healthcare
+            professional.{" "}
+            {data?.caution.startsWith("Basic mode") || data?.caution.startsWith("Private mode")
+              ? "This explanation was put together automatically and has not been reviewed by a clinician."
+              : "Explanations are written by AI and have not been reviewed by a clinician."}{" "}
+            The sample patients are fictional. Research comes from PubMed; word meanings from MedlinePlus and MeSH; voice by
+            ElevenLabs.
+          </p>
+        </div>
       </footer>
     </main>
   );
@@ -771,60 +865,41 @@ const VIDEOS = {
   },
 } as const;
 
-function LaunchVideo() {
-  const [open, setOpen] = useState<keyof typeof VIDEOS | null>(null);
-  const v = open ? VIDEOS[open] : null;
+
+function BridgeMark({ light = false }: { light?: boolean }) {
+  const c = light ? "#FBF8F3" : "#1F5C4D";
   return (
-    <div className="mt-4">
-      {!v ? (
-        <div className="flex flex-wrap gap-3">
+    <svg width="26" height="16" viewBox="0 0 26 16" aria-hidden="true">
+      <path d="M3 13 C7 3, 19 3, 23 13" fill="none" stroke={c} strokeWidth="2.4" strokeLinecap="round" />
+      <circle cx="3" cy="13" r="2.4" fill={c} />
+      <circle cx="23" cy="13" r="2.4" fill={c} />
+    </svg>
+  );
+}
+
+function FilmPlayer() {
+  const [which, setWhich] = useState<keyof typeof VIDEOS>("film");
+  const v = VIDEOS[which];
+  return (
+    <figure className="rounded-[2rem] bg-sand p-3 sm:p-4">
+      <div className="mb-3 flex gap-2 px-1 text-sm">
+        {(Object.keys(VIDEOS) as (keyof typeof VIDEOS)[]).map((k) => (
           <button
+            key={k}
             type="button"
-            onClick={() => setOpen("film")}
-            className="inline-flex items-center gap-2 bg-ink px-4 py-2 text-sm font-medium text-paper hover:bg-accent"
+            onClick={() => setWhich(k)}
+            className={`rounded-xl px-3 py-1.5 ${which === k ? "bg-ink text-paper" : "bg-white text-ink hover:bg-paper"}`}
           >
-            <span aria-hidden="true">▶</span> {VIDEOS.film.label}
+            {k === "film" ? "Launch film" : "Demo"}
           </button>
-          <button
-            type="button"
-            onClick={() => setOpen("demo")}
-            className="inline-flex items-center gap-2 border border-ink px-4 py-2 text-sm font-medium hover:bg-ink hover:text-paper"
-          >
-            <span aria-hidden="true">▶</span> {VIDEOS.demo.label}
-          </button>
-        </div>
-      ) : (
-        <figure className="max-w-4xl">
-          <video
-            key={open}
-            poster={`${v.base}-poster.jpg`}
-            controls
-            autoPlay
-            playsInline
-            preload="metadata"
-            className="w-full border border-line bg-white"
-          >
-            <source src={`${v.base}.webm`} type="video/webm" />
-            <source src={`${v.base}.mp4`} type="video/mp4" />
-            <track kind="descriptions" />
-          </video>
-          <figcaption className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted">
-            <span>{v.caption}</span>
-            <span className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => setOpen(open === "film" ? "demo" : "film")}
-                className="text-accent underline underline-offset-4"
-              >
-                {open === "film" ? VIDEOS.demo.label : VIDEOS.film.label}
-              </button>
-              <button type="button" onClick={() => setOpen(null)} className="text-accent underline underline-offset-4">
-                Close video
-              </button>
-            </span>
-          </figcaption>
-        </figure>
-      )}
-    </div>
+        ))}
+      </div>
+      <video key={which} poster={`${v.base}-poster.jpg`} controls playsInline preload="metadata" className="w-full rounded-2xl bg-white">
+        <source src={`${v.base}.webm`} type="video/webm" />
+        <source src={`${v.base}.mp4`} type="video/mp4" />
+        <track kind="descriptions" />
+      </video>
+      <figcaption className="mt-2 px-1 text-xs text-muted">{v.caption}</figcaption>
+    </figure>
   );
 }

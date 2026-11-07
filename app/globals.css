@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-paper: #fbf8f3;
+  --color-paper: #fcfaf8;
+  --color-sand: #f3eee7;
+  --color-mint: #cfeedd;
   --color-ink: #1a2530;
   --color-muted: #5b6670;
   --color-line: #ddd6cb;
@@ -13,14 +15,20 @@
 
 html,
 body {
-  background: #fbf8f3;
+  background: #fcfaf8;
   color: #1a2530;
   font-family: "Inter Variable", "Inter", system-ui, sans-serif;
 }
 
-a {
-  color: #1f5c4d;
-  text-underline-offset: 3px;
+html {
+  scroll-behavior: smooth;
+}
+
+@layer base {
+  a {
+    color: #1f5c4d;
+    text-underline-offset: 3px;
+  }
 }
 
 :focus-visible {

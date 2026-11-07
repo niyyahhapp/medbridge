@@ -42,7 +42,8 @@ const TOOL_DEFS = [
 
 export function provider(): "anthropic" | "openai" | null {
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.OPENAI_API_KEY) return "openai";
+  // OPENAI_BASE_URL lets you use any OpenAI-compatible server, e.g. llama.cpp at http://localhost:8080/v1
+  if (process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) return "openai";
   return null;
 }
 
@@ -107,17 +108,20 @@ async function anthropicCall(messages: any[], withTools: boolean): Promise<Turn>
 }
 
 async function openaiCall(messages: any[], withTools: boolean): Promise<Turn> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.OPENAI_API_KEY) headers.authorization = `Bearer ${process.env.OPENAI_API_KEY}`;
+  const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers,
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-5",
+      model: process.env.OPENAI_MODEL || (process.env.OPENAI_BASE_URL ? "local" : "gpt-5"),
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       tools: TOOL_DEFS.map((t) => ({ type: "function", function: t })),
       ...(withTools ? {} : { tool_choice: "none" }),
     }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`AI error ${res.status}: ${data?.error?.message ?? "unknown"}`);
   const msg = data.choices?.[0]?.message ?? {};
   return {

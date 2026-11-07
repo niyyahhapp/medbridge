@@ -45,7 +45,23 @@ export default function Home() {
   function stopAudio() {
     audioRef.current?.pause();
     audioRef.current = null;
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     setVoice("idle");
+  }
+
+  // Fallback when ElevenLabs is not connected: the browser's built-in voice.
+  function speakWithBrowser(text: string, french: boolean): boolean {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!synth) return false;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = french ? "fr-FR" : "en-US";
+    u.rate = 0.95;
+    u.onend = () => setVoice("idle");
+    u.onerror = () => setVoice("idle");
+    synth.speak(u);
+    setVoice("playing");
+    return true;
   }
 
   async function run() {
@@ -103,6 +119,11 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: textToRead(data) }),
       });
+      if (res.status === 503) {
+        // ElevenLabs key not added yet: use the browser voice instead.
+        const french = /^(Votre|Exemple)/.test(data.summary + "") || data.caution.startsWith("Exemple");
+        if (speakWithBrowser(textToRead(data), french)) return;
+      }
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Voice is not available.");
       const url = URL.createObjectURL(await res.blob());
       const audio = new Audio(url);

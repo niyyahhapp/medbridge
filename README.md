@@ -13,6 +13,21 @@ Paste a medical report and get a plain-language explanation, backed by real PubM
 2. `npm install`
 3. `npm run dev`, then open http://localhost:3000
 
+## Run the agent locally with llama.cpp
+
+1. Start llama.cpp's server with tool calling on: `llama-server -m your-model.gguf --port 8080 --jinja`
+2. In `.env.local` set `OPENAI_BASE_URL=http://localhost:8080/v1`
+3. `npm run dev` and open http://localhost:3000
+
+Use a model that supports tool calling (for example a Qwen or Llama instruct model).
+
+## Modes
+
+- **AI agent**: when `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENAI_BASE_URL` is set.
+- **Prepared example**: with no AI connected, the five sample reports show explanations written ahead of time by Claude from the linked abstracts; PubMed is still called live and titles/years come from PubMed.
+- **Basic mode**: any other report with no AI connected gets live PubMed results, a built-in plain-language glossary, and direct quotes from abstracts.
+- **Voice**: ElevenLabs when `ELEVENLABS_API_KEY` is set, otherwise the browser's built-in voice.
+
 ## Deploy
 
 Import this repository on Vercel and add the same keys under Settings → Environment Variables.

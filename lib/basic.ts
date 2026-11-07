@@ -94,3 +94,26 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
   emit({ type: "step", step: "write", status: "done" });
   return data;
 }
+
+/** Prepared explanation for a sample report. PubMed is still called for real,
+ *  and titles and years are taken from PubMed, not from the prepared text. */
+export async function preparedExplain(
+  prepared: { query: string; data: Explanation },
+  emit: Emit
+): Promise<Explanation> {
+  emit({ type: "step", step: "read", status: "running" });
+  emit({ type: "step", step: "read", status: "done", detail: "fictional sample report" });
+  emit({ type: "step", step: "search_pubmed", status: "running", detail: prepared.query });
+  const found = await searchPubmed(prepared.query, 5);
+  emit({ type: "step", step: "search_pubmed", status: "done", detail: `${prepared.query} · ${found.length} found` });
+  const pmids = prepared.data.research.map((r) => r.pmid);
+  emit({ type: "step", step: "get_abstracts", status: "running", detail: pmids.join(", ") });
+  const real = new Map((await getAbstracts(pmids)).map((a) => [a.pmid, a]));
+  emit({ type: "step", step: "get_abstracts", status: "done", detail: `${real.size} abstracts read` });
+  emit({ type: "step", step: "write", status: "running" });
+  const research = prepared.data.research
+    .filter((r) => real.has(r.pmid))
+    .map((r) => ({ ...r, title: real.get(r.pmid)!.title, year: real.get(r.pmid)!.year }));
+  emit({ type: "step", step: "write", status: "done", detail: "prepared example" });
+  return { ...prepared.data, research };
+}

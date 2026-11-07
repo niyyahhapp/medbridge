@@ -1,9 +1,11 @@
 import { explain, provider } from "@/lib/agent";
-import { basicExplain } from "@/lib/basic";
+import { basicExplain, preparedExplain } from "@/lib/basic";
+import { findPrepared } from "@/lib/prepared";
+import { SAMPLE_REPORTS } from "@/lib/reports";
 import { allow, clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 60; // local models can be slower; this only applies on Vercel
 
 const PER_PERSON = Number(process.env.EXPLAIN_LIMIT_PER_PERSON || 15);
 const TOTAL = Number(process.env.EXPLAIN_LIMIT_TOTAL || 150);
@@ -24,7 +26,12 @@ export async function POST(req: Request) {
         if (!allow("ip:" + clientIp(req), PER_PERSON) || !allow("total", TOTAL)) {
           throw new Error("The demo is busy right now. Please try again in a little while.");
         }
-        const data = provider() ? await explain(report, emit) : await basicExplain(report, emit);
+        const prepared = findPrepared(report, SAMPLE_REPORTS);
+        const data = provider()
+          ? await explain(report, emit)
+          : prepared
+            ? await preparedExplain(prepared, emit)
+            : await basicExplain(report, emit);
         emit({ type: "result", data });
       } catch (e) {
         console.error("explain failed:", e);

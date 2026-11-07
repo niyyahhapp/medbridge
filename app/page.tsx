@@ -290,6 +290,7 @@ export default function Home() {
           Paste a report. An AI agent searches real research on PubMed and explains what your report says, with a link to
           every article it uses. You can also listen to the explanation.
         </p>
+        <LaunchVideo />
       </header>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
@@ -722,5 +723,46 @@ function SentPreview({ report }: { report: string }) {
         )}
       </pre>
     </details>
+  );
+}
+
+/** The 60-second launch video: a real recorded run with a fictional patient. */
+function LaunchVideo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 border border-ink px-4 py-2 text-sm font-medium hover:bg-ink hover:text-paper"
+        >
+          <span aria-hidden="true">▶</span> Watch the 60-second demo
+        </button>
+      ) : (
+        <figure className="max-w-3xl">
+          <video
+            poster="/medbridge-demo-poster.jpg"
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            className="w-full border border-line bg-white"
+          >
+            <source src="/medbridge-demo.webm" type="video/webm" />
+            <source src="/medbridge-demo.mp4" type="video/mp4" />
+            <track kind="descriptions" />
+          </video>
+          <figcaption className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-xs text-muted">
+            <span>
+              A real run of MedBridge with a fictional patient. The AI&rsquo;s waiting time is sped up and labelled in the video.
+            </span>
+            <button type="button" onClick={() => setOpen(false)} className="text-accent underline underline-offset-4">
+              Close video
+            </button>
+          </figcaption>
+        </figure>
+      )}
+    </div>
   );
 }

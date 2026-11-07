@@ -1,9 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Explanation, Step } from "@/lib/agent";
 import { SAMPLE_REPORTS } from "@/lib/reports";
 import { OrganFigure, organFrom } from "./OrganFigure";
+import { redact, type Removal } from "@/lib/redact";
+
+const AUTO_DELETE_MINUTES = 10;
 
 type StepState = { status: "waiting" | "running" | "done"; detail?: string };
 
@@ -43,6 +46,48 @@ export default function Home() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Privacy
+  const [privateMode, setPrivateMode] = useState(false);
+  const [removed, setRemoved] = useState<Removal[] | null>(null);
+  const [services, setServices] = useState<{ ai: string | null; voice: boolean } | null>(null);
+  const [cleared, setCleared] = useState<string | null>(null);
+  const lastActivity = useRef(Date.now());
+
+  useEffect(() => {
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then(setServices)
+      .catch(() => setServices({ ai: null, voice: false }));
+  }, []);
+
+  // Auto-delete: clear the report and explanation after a period with no activity.
+  useEffect(() => {
+    const touch = () => (lastActivity.current = Date.now());
+    const events = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivity.current > AUTO_DELETE_MINUTES * 60_000) {
+        clearAll(`Deleted automatically after ${AUTO_DELETE_MINUTES} minutes without activity.`);
+        lastActivity.current = Date.now();
+      }
+    }, 30_000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, touch));
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function clearAll(message = "Everything was deleted from this page.") {
+    stopAudio();
+    setReport("");
+    setData(null);
+    setError(null);
+    setRemoved(null);
+    setSteps(freshSteps());
+    setCleared(message);
+  }
+
   function stopAudio() {
     audioRef.current?.pause();
     audioRef.current = null;
@@ -71,11 +116,15 @@ export default function Home() {
     setError(null);
     setData(null);
     setSteps(freshSteps());
+    setCleared(null);
+    // Remove personal details in the browser, before anything is sent.
+    const safe = redact(report);
+    setRemoved(safe.removed);
     try {
       const res = await fetch("/api/explain", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ report }),
+        body: JSON.stringify({ report: safe.text, privateMode }),
       });
       if (!res.body) throw new Error("No answer from the server.");
       const reader = res.body.getReader();
@@ -114,6 +163,9 @@ export default function Home() {
     if (voice === "playing") return stopAudio();
     setVoice("loading");
     setVoiceError(null);
+    const french = /^(Votre|Exemple)/.test(data.summary + "") || data.caution.startsWith("Exemple");
+    // In private mode, never send text to a voice company: use the browser's own voice.
+    if (privateMode && speakWithBrowser(textToRead(data), french)) return;
     try {
       const res = await fetch("/api/speak", {
         method: "POST",
@@ -122,7 +174,6 @@ export default function Home() {
       });
       if (res.status === 503) {
         // ElevenLabs key not added yet: use the browser voice instead.
-        const french = /^(Votre|Exemple)/.test(data.summary + "") || data.caution.startsWith("Exemple");
         if (speakWithBrowser(textToRead(data), french)) return;
       }
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Voice is not available.");
@@ -191,7 +242,24 @@ export default function Home() {
           >
             {loading ? "Explaining…" : "Explain this report"}
           </button>
-          <p className="mt-2 text-xs text-muted">Please do not paste real names or personal details.</p>
+          <PrivacyPanel
+            privateMode={privateMode}
+            setPrivateMode={setPrivateMode}
+            services={services}
+            removed={removed}
+          />
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <button type="button" onClick={() => clearAll()} className="text-danger underline underline-offset-4">
+              Delete everything now
+            </button>
+            <span className="text-xs text-muted">Auto-deletes after {AUTO_DELETE_MINUTES} minutes without activity.</span>
+          </div>
+          {cleared && (
+            <p role="status" className="mt-2 text-sm text-accent">
+              {cleared} Nothing was saved on our server.
+            </p>
+          )}
 
           {started && (
             <div className="mt-8 border-t border-line pt-4">
@@ -360,5 +428,92 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="font-serif text-xl">{title}</h2>
       <div className="mt-1">{children}</div>
     </section>
+  );
+}
+
+function PrivacyPanel({
+  privateMode,
+  setPrivateMode,
+  services,
+  removed,
+}: {
+  privateMode: boolean;
+  setPrivateMode: (v: boolean) => void;
+  services: { ai: string | null; voice: boolean } | null;
+  removed: Removal[] | null;
+}) {
+  const ai = services?.ai;
+  const aiIsLocal = !!ai && ai.startsWith("a model running on this computer");
+  return (
+    <div className="mt-6 border-t border-line pt-4">
+      <h2 className="font-serif text-lg">Your privacy</h2>
+
+      <label className="mt-3 flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={privateMode}
+          onChange={(e) => setPrivateMode(e.target.checked)}
+          className="mt-1 h-4 w-4 accent-[#1F5C4D]"
+        />
+        <span>
+          <span className="font-medium">Private mode</span>
+          <span className="block text-sm text-muted">
+            Your report is not sent to any AI company. You get plain meanings of the words and real research from PubMed,
+            without an AI-written explanation.
+          </span>
+        </span>
+      </label>
+
+      {removed && (
+        <p className="mt-3 text-sm">
+          {removed.length === 0 ? (
+            <span className="text-muted">No personal details were found in your report.</span>
+          ) : (
+            <>
+              <span className="font-medium text-accent">Removed before sending: </span>
+              {removed.map((r) => `${r.kind}${r.count > 1 ? ` (${r.count})` : ""}`).join(", ")}.
+            </>
+          )}
+        </p>
+      )}
+
+      <details className="mt-3 text-sm">
+        <summary className="cursor-pointer text-accent underline underline-offset-4">Where your report goes</summary>
+        <ul className="mt-2">
+          <li className="border-b border-line py-2">
+            <span className="font-medium">In your browser first:</span> names, dates of birth, phone numbers, emails,
+            addresses and ID numbers are removed before anything is sent. Medical values are kept.
+          </li>
+          <li className="border-b border-line py-2">
+            <span className="font-medium">Our server:</span> uses the report only while explaining it. It is never saved,
+            never logged, and there is no database.
+          </li>
+          <li className="border-b border-line py-2">
+            <span className="font-medium">AI company:</span>{" "}
+            {privateMode
+              ? "not used, because Private mode is on."
+              : ai
+                ? aiIsLocal
+                  ? `${ai}.`
+                  : `the report (without personal details) is sent to ${ai} to write the explanation. Free AI services may keep data or use it to improve their products. Turn on Private mode if you are not comfortable with this.`
+                : "none is connected right now, so your report is not sent to any AI company."}
+          </li>
+          <li className="border-b border-line py-2">
+            <span className="font-medium">PubMed:</span> receives only short search words, such as &ldquo;fatty liver
+            lifestyle&rdquo;, never your report.
+          </li>
+          <li className="border-b border-line py-2">
+            <span className="font-medium">Voice:</span>{" "}
+            {privateMode || !services?.voice
+              ? "uses your browser's own voice, so nothing is sent anywhere."
+              : "if you press Listen, the explanation (not your report) is sent to ElevenLabs to make the audio."}
+          </li>
+          <li className="py-2">
+            <span className="font-medium">This page:</span> keeps nothing after you close it. Use &ldquo;Delete
+            everything now&rdquo; at any time.
+          </li>
+        </ul>
+      </details>
+    </div>
   );
 }

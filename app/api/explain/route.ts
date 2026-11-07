@@ -3,6 +3,7 @@ import { basicExplain, preparedExplain } from "@/lib/basic";
 import { findPrepared } from "@/lib/prepared";
 import { SAMPLE_REPORTS } from "@/lib/reports";
 import { allow, clientIp } from "@/lib/ratelimit";
+import { redact } from "@/lib/redact";
 
 export const runtime = "nodejs";
 export const maxDuration = 120; // seconds; free AI tiers can be slow when busy
@@ -12,9 +13,14 @@ const TOTAL = Number(process.env.EXPLAIN_LIMIT_TOTAL || 150);
 
 export async function POST(req: Request) {
   let report = "";
+  let privateMode = false;
   try {
-    report = String((await req.json())?.report ?? "").trim();
+    const body = await req.json();
+    // Second safety net: remove personal details again on the server.
+    report = redact(String(body?.report ?? "")).text.trim();
+    privateMode = body?.privateMode === true;
   } catch {}
+  // The report is never stored or logged. It only lives in memory for this request.
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -27,14 +33,14 @@ export async function POST(req: Request) {
           throw new Error("The demo is busy right now. Please try again in a little while.");
         }
         const prepared = findPrepared(report, SAMPLE_REPORTS);
-        const data = provider()
+        const data = provider() && !privateMode
           ? await explain(report, emit)
           : prepared
             ? await preparedExplain(prepared, emit)
             : await basicExplain(report, emit);
         emit({ type: "result", data });
       } catch (e) {
-        console.error("explain failed:", e);
+        console.error("explain failed:", (e as Error).message); // message only, never the report
         emit({ type: "error", message: (e as Error).message || "Something went wrong." });
       } finally {
         controller.close();

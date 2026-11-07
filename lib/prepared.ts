@@ -3,6 +3,7 @@
 // agent, using ONLY each report's text and the PubMed abstracts listed.
 // At run time, titles and years are re-fetched from PubMed, so they are always real.
 import type { Explanation } from "./agent";
+import { redact } from "./redact";
 
 type Prepared = { query: string; data: Explanation };
 
@@ -366,7 +367,7 @@ export const PREPARED: Record<string, Prepared> = {
 
 export function findPrepared(report: string, samples: { label: string; text: string }[]): Prepared | null {
   const r = norm(report);
-  const match = samples.find((s) => norm(s.text) === r);
+  const match = samples.find((s) => norm(s.text) === r || norm(redact(s.text).text) === r);
   if (!match) return null;
   const key = match.label.split(" ")[0].toLowerCase();
   return PREPARED[key] ?? null;

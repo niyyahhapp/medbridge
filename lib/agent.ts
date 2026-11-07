@@ -483,3 +483,17 @@ export async function explain(
   const r = await guidedPipeline(call, report, seen, emit);
   return await finish(call, r.messages, r.finalText, seen, emit);
 }
+
+/** Human-readable name of the AI company the report is sent to, for the privacy panel. */
+export function providerLabel(): string | null {
+  const p = provider();
+  if (!p) return null;
+  if (p === "anthropic") return "Anthropic (Claude)";
+  const base = process.env.OPENAI_BASE_URL || "";
+  if (!base) return "OpenAI";
+  if (base.includes("googleapis")) return "Google (Gemini)";
+  if (base.includes("featherless")) return "Featherless";
+  if (base.includes("groq")) return "Groq";
+  if (/localhost|127\.0\.0\.1/.test(base)) return "a model running on this computer (nothing leaves the device)";
+  return new URL(base).hostname;
+}

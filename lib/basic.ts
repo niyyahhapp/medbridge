@@ -22,7 +22,7 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
   const lines = report
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l && !/^patient\s*:/i.test(l));
+    .filter((l) => l && !/^patient\s*:/i.test(l) && !/\[[^\]]*removed\]/.test(l));
   const planLine = lines.find((l) => /^(plan|comment|commentaire)\s*:/i.test(l));
   emit({ type: "step", step: "read", status: "done", detail: `${hits.length} medical terms found` });
 

@@ -23,12 +23,29 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l && !/^patient\s*:/i.test(l) && !/\[[^\]]*removed\]/.test(l));
-  const planLine = lines.find((l) => /^(plan|comment|commentaire)\s*:/i.test(l));
+  // Prefer a "Plan:" line; otherwise a follow-up style comment.
+  const planLine =
+    lines.find((l) => /^(plan|follow[- ]?up|recommendation|recommandation)s?\s*:/i.test(l)) ??
+    lines.find((l) => /^(comment|commentaire)\s*:/i.test(l) && /repeat|follow|recheck|again|review|nouvelle|contr[ôo]le/i.test(l));
+  // The main condition, as written: "consistent with X", "suggestive of X", "Impression: X"...
+  const diagnosis = report
+    .match(/(?:consistent with|compatible(?:s)? avec|suggestive of|in keeping with|suspicious for|impression\s*:|diagnosis\s*:|conclusion\s*:)\s*(?:an?\s+|une?\s+)?([^.;\n]{3,80})/i)?.[1]
+    ?.replace(/^(mild|moderate|severe|early|small|légère|modérée)\s+/i, "")
+    .trim();
   emit({ type: "step", step: "read", status: "done", detail: `${hits.length} medical terms found` });
 
   // Search PubMed with the main topic, falling back to shorter searches.
-  const topics = hits.filter((h) => h.query);
-  const queries = [...topics.map((t) => t.query!), ...topics.map((t) => t.term)];
+  // Topics from the glossary; the one named in the diagnosis comes first.
+  const topics = hits
+    .filter((h) => h.query)
+    .sort((a, b) => Number(!!diagnosis && b.match.test(diagnosis)) - Number(!!diagnosis && a.match.test(diagnosis)));
+  const queries = [
+    ...(diagnosis && !topics.some((t) => t.match.test(diagnosis)) && /^[\x00-\x7F]+$/.test(diagnosis)
+      ? [`${diagnosis}[tiab] AND review[pt]`, diagnosis]
+      : []),
+    ...topics.map((t) => t.query!),
+    ...topics.map((t) => t.term.replace(/\s*\(.*\)/, "")),
+  ].filter((q, i, a) => a.indexOf(q) === i);
   let pmids: string[] = [];
   for (const q of queries.slice(0, 3)) {
     emit({ type: "step", step: "search_pubmed", status: "running", detail: q });
@@ -55,21 +72,21 @@ export async function basicExplain(report: string, emit: Emit): Promise<Explanat
 
   emit({ type: "step", step: "write", status: "running" });
   const findings = lines
-    .filter((l) => l !== planLine)
+    .filter((l) => l !== planLine && !/^[^:]{2,40}:\s*$/.test(l)) // skip headings like "Thyroid function tests:"
     .map((l) => {
       const notes = GLOSSARY.filter((g) => g.match.test(l) && g.query).map((g) => `${g.term}: ${g.plain}`);
       return {
         from_document: l,
-        explanation: notes.length
-          ? notes.join(" ")
-          : "See \"Words in your report\" for the meaning of the words in this line.",
+        explanation: notes.join(" "),
       };
     });
 
   const main = topics[0]?.term;
   const data: Explanation = {
-    summary: main
-      ? `Your document talks about ${main.toLowerCase()}. Below, each medical word is explained in plain language, and real research about it is linked from PubMed.`
+    summary: diagnosis
+      ? `Your document says: "${lines.find((l) => l.toLowerCase().includes(diagnosis.toLowerCase())) ?? diagnosis}" Below, each medical word is explained in plain language${research.length ? ", and real research about it is linked from PubMed" : ""}.`
+      : main
+      ? `Your document talks about ${main.replace(/\s*\(.*\)/, "").toLowerCase()}. Below, each medical word is explained in plain language${research.length ? ", and real research about it is linked from PubMed" : ""}.`
       : "Below, each medical word in your document is explained in plain language.",
     terms: hits.map((h) => ({
       term: h.term,

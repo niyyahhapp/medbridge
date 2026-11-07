@@ -489,7 +489,7 @@ export default function Home() {
                   {view.findings.map((f, i) => (
                     <div key={i} className="border-b border-line py-3 last:border-0">
                       <p className="font-mono text-sm">{f.from_document}</p>
-                      <p className="mt-1">{f.explanation}</p>
+                      {f.explanation && <p className="mt-1">{f.explanation}</p>}
                     </div>
                   ))}
                 </Section>

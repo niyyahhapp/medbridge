@@ -167,16 +167,29 @@ async function anthropicCall(
   };
 }
 
-// Models to try in order: OPENAI_MODEL, then OPENAI_FALLBACK_MODELS (comma-separated).
-function openaiModels(): string[] {
-  const first =
-    process.env.OPENAI_MODEL ||
-    (process.env.OPENAI_BASE_URL ? "local" : "gpt-5");
-  const rest = (process.env.OPENAI_FALLBACK_MODELS || "")
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-  return [first, ...rest.filter((m) => m !== first)];
+// Where to send AI requests, in order: the main provider's models (OPENAI_MODEL, then
+// OPENAI_FALLBACK_MODELS), then an optional backup provider (BACKUP_BASE_URL / BACKUP_API_KEY /
+// BACKUP_MODEL), used automatically if the main one is busy, slow or down.
+type Target = { base: string; key?: string; model: string; reasoning?: string };
+function openaiModels(): Target[] {
+  const list = (v?: string) => (v || "").split(",").map((m) => m.trim()).filter(Boolean);
+  const base = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const first = process.env.OPENAI_MODEL || (process.env.OPENAI_BASE_URL ? "local" : "gpt-5");
+  const main = [first, ...list(process.env.OPENAI_FALLBACK_MODELS).filter((m) => m !== first)].map((model) => ({
+    base,
+    key: process.env.OPENAI_API_KEY,
+    model,
+    reasoning: process.env.OPENAI_REASONING_EFFORT,
+  }));
+  const backup = process.env.BACKUP_BASE_URL
+    ? list(process.env.BACKUP_MODEL).map((model) => ({
+        base: process.env.BACKUP_BASE_URL!.replace(/\/+$/, ""),
+        key: process.env.BACKUP_API_KEY,
+        model,
+        reasoning: process.env.BACKUP_REASONING_EFFORT,
+      }))
+    : [];
+  return [...main, ...backup];
 }
 let preferredModel = 0; // remember a model that worked
 
@@ -185,30 +198,25 @@ async function openaiCall(
   withTools: boolean | "omit",
   system: string = SYSTEM_PROMPT,
 ): Promise<Turn> {
-  const base = (
-    process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"
-  ).replace(/\/+$/, "");
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  if (process.env.OPENAI_API_KEY)
-    headers.authorization = `Bearer ${process.env.OPENAI_API_KEY}`;
   const models = openaiModels();
   let data: any = null;
   let lastError = "";
   outer: for (let k = 0; k < models.length; k++) {
     const mi = (preferredModel + k) % models.length;
+    const tg = models[mi];
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (tg.key) headers.authorization = `Bearer ${tg.key}`;
     for (let attempt = 0; attempt < 2; attempt++) {
       let res: Response;
       try {
-        res = await fetch(`${base}/chat/completions`, {
+        res = await fetch(`${tg.base}/chat/completions`, {
           method: "POST",
           headers,
           signal: AbortSignal.timeout(
             Number(process.env.AI_TIMEOUT_MS || 40000),
           ),
           body: JSON.stringify({
-            model: models[mi],
+            model: tg.model,
             messages: [{ role: "system", content: system }, ...messages],
             ...(withTools === "omit"
               ? {}
@@ -220,9 +228,7 @@ async function openaiCall(
                   ...(withTools ? {} : { tool_choice: "none" }),
                 }),
             temperature: 0.2,
-            ...(process.env.OPENAI_REASONING_EFFORT
-              ? { reasoning_effort: process.env.OPENAI_REASONING_EFFORT }
-              : {}),
+            ...(tg.reasoning ? { reasoning_effort: tg.reasoning } : {}),
           }),
         });
       } catch (e) {
@@ -243,9 +249,9 @@ async function openaiCall(
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
-      // Model not found: try the next model. Anything else (bad request, bad key): stop.
-      if (res.status === 404) continue outer;
-      throw new Error(lastError);
+      // Anything else (model not found, out of credits, bad key, unsupported option):
+      // move on to the next model or the backup provider.
+      continue outer;
     }
   }
   if (!data) throw new Error(lastError || "AI error: no answer");
@@ -554,17 +560,25 @@ export async function explain(
 }
 
 /** Human-readable name of the AI company the report is sent to, for the privacy panel. */
-export function providerLabel(): string | null {
-  const p = provider();
-  if (!p) return null;
-  if (p === "anthropic") return "Anthropic (Claude)";
-  const base = process.env.OPENAI_BASE_URL || "";
+function labelFor(base: string): string {
   if (!base) return "OpenAI";
   if (base.includes("googleapis")) return "Google (Gemini)";
   if (base.includes("featherless")) return "Featherless";
   if (base.includes("groq")) return "Groq";
   if (/localhost|127\.0\.0\.1/.test(base)) return "a model running on this computer (nothing leaves the device)";
-  return new URL(base).hostname;
+  try {
+    return new URL(base).hostname;
+  } catch {
+    return "an AI provider";
+  }
+}
+
+export function providerLabel(): string | null {
+  const p = provider();
+  if (!p) return null;
+  const main = p === "anthropic" ? "Anthropic (Claude)" : labelFor(process.env.OPENAI_BASE_URL || "");
+  const backup = process.env.BACKUP_BASE_URL ? labelFor(process.env.BACKUP_BASE_URL) : null;
+  return backup && backup !== main ? `${main} (or ${backup} as a backup if ${main} is unavailable)` : main;
 }
 
 /** Translate short texts with the connected AI (used when DeepL is not set up). */

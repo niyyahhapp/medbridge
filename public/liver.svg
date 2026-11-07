@@ -1,0 +1,6 @@
+<svg viewBox="0 0 240 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Line drawing of a torso with the liver outlined on the upper right of the abdomen">
+<path d="M70 20 Q120 8 170 20 Q196 28 200 56 L194 150 Q192 220 176 270 L64 270 Q48 220 46 150 L40 56 Q44 28 70 20 Z" fill="none" stroke="#1A2530" stroke-width="1.5"/>
+<path d="M62 92 Q92 76 128 84 Q148 90 146 108 Q140 132 108 134 Q78 134 64 116 Q58 102 62 92 Z" fill="#1F5C4D" fill-opacity="0.18" stroke="#1F5C4D" stroke-width="1.8"/>
+<path d="M146 98 L206 98" stroke="#1F5C4D" stroke-width="1"/>
+<text x="150" y="90" font-size="12" font-family="Inter, sans-serif" fill="#1F5C4D">liver</text>
+</svg>

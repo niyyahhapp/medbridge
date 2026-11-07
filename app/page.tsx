@@ -500,7 +500,7 @@ export default function Home() {
 
           {loading && !data && (
             <p className="text-muted">
-              Reading the report and searching PubMed. This takes about 20–40 seconds.
+              Reading the report and searching PubMed. This usually takes about 5–15 seconds.
             </p>
           )}
 

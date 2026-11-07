@@ -2,6 +2,7 @@
 import { Article, getAbstracts, searchPubmed } from "./pubmed";
 import { SYSTEM_PROMPT } from "./prompt";
 import { stripViolations, treatmentViolations } from "./safety";
+import { basicExplain } from "./basic";
 
 export type Explanation = {
   summary: string;
@@ -335,6 +336,7 @@ async function finish(
   finalText: string,
   seen: Map<string, Article>,
   emit: Emit,
+  rewrite = true,
 ) {
   emit({ type: "step", step: "write", status: "running" });
   let parsed: any;
@@ -362,7 +364,7 @@ async function finish(
   const bad = treatmentViolations(data);
   let safetyNote = "";
   if (bad.length) {
-    try {
+    if (rewrite) try {
       const fix = await call(
         [
           ...messages,
@@ -380,7 +382,9 @@ async function finish(
     }
     const still = treatmentViolations(data).length;
     data = stripViolations(data);
-    safetyNote = `safety check: ${bad.length} sentence(s) rewritten${still ? `, ${still} removed` : ""}`;
+    safetyNote = rewrite
+      ? `safety check: ${bad.length} sentence(s) rewritten${still ? `, ${still} removed` : ""}`
+      : `safety check: ${bad.length} sentence(s) removed`;
   }
   const details = [removed ? `${removed} unverified article(s) removed` : "", safetyNote].filter(Boolean).join(" · ");
   emit({ type: "step", step: "write", status: "done", detail: details || undefined });
@@ -479,6 +483,36 @@ async function guidedPipeline(
   return { messages, finalText: turn.text };
 }
 
+/** Fast mode: our code finds the research (about 1-2 s, no AI), then the AI writes once. */
+async function fastPipeline(call: Call, report: string, seen: Map<string, Article>, emit: Emit) {
+  const base = await basicExplain(report, (e) => {
+    if (!(e.step === "write")) emit(e); // the AI does the writing below
+  });
+  base.research.forEach((r) =>
+    seen.set(r.pmid, { pmid: r.pmid, title: r.title, year: r.year, journal: "", abstract: r.what_it_found }),
+  );
+  const research = base.research.map((r) => ({
+    pmid: r.pmid,
+    title: r.title,
+    year: r.year,
+    conclusion: r.what_it_found.replace(/^From the abstract: /, "").slice(0, 600),
+  }));
+  const meanings = base.terms.map((t) => `${t.term}: ${t.plain_meaning}`).join("\n");
+  emit({ type: "step", step: "write", status: "running", detail: "AI is writing" });
+  const messages: any[] = [
+    {
+      role: "user",
+      content:
+        `Here is the medical document:\n\n${report.slice(0, 6000)}\n\n` +
+        `These PubMed articles were already retrieved. They are the ONLY research you may cite (JSON):\n${JSON.stringify(research)}\n\n` +
+        `Trusted word meanings you may use:\n${meanings.slice(0, 3000)}\n\n` +
+        `Do not call any tools. Write the explanation now and return only the JSON object.`,
+    },
+  ];
+  const turn = await call(messages, "omit");
+  return { messages, finalText: turn.text };
+}
+
 export async function explain(
   report: string,
   emit: Emit,
@@ -488,6 +522,19 @@ export async function explain(
   const call: Call = p === "anthropic" ? anthropicCall : openaiCall;
   const seen = new Map<string, Article>();
   emit({ type: "step", step: "read", status: "running" });
+
+  // Fast mode (default): one AI call. Set AGENT_MODE=agent for the slower tool-calling agent.
+  if (process.env.AGENT_MODE !== "agent") {
+    try {
+      const r = await fastPipeline(call, report, seen, emit);
+      emit({ type: "step", step: "read", status: "done" });
+      return await finish(call, r.messages, r.finalText, seen, emit, false);
+    } catch (e) {
+      if (/\b(401|402|403|429)\b/.test((e as Error).message)) throw e;
+      console.warn("Fast pipeline failed, trying the agent:", (e as Error).message.match(/AI error \d+/)?.[0] ?? "error");
+      seen.clear();
+    }
+  }
 
   if (process.env.AGENT_TOOLS !== "off") {
     try {

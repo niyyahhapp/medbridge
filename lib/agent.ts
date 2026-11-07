@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- loosely typed external API data */
 import { Article, getAbstracts, searchPubmed } from "./pubmed";
 import { SYSTEM_PROMPT } from "./prompt";
+import { stripViolations, treatmentViolations } from "./safety";
 
 export type Explanation = {
   summary: string;
@@ -355,13 +356,34 @@ async function finish(
     );
     parsed = extractJson(fix.text);
   }
-  const { data, removed } = verify(parsed, seen);
-  emit({
-    type: "step",
-    step: "write",
-    status: "done",
-    detail: removed ? `${removed} unverified article(s) removed` : undefined,
-  });
+  let { data, removed } = verify(parsed, seen);
+
+  // Safety check: no treatment or medication advice. One rewrite, then remove what is left.
+  const bad = treatmentViolations(data);
+  let safetyNote = "";
+  if (bad.length) {
+    try {
+      const fix = await call(
+        [
+          ...messages,
+          { role: "assistant", content: JSON.stringify(data) },
+          {
+            role: "user",
+            content: `These sentences give treatment or medication advice, which is not allowed:\n${bad.map((b) => "- " + b).join("\n")}\nRewrite the JSON without any treatment thresholds, medication names, doses or advice about when treatment is needed. Say the care team decides next steps instead. Keep everything else the same. Return only the JSON.`,
+          },
+        ],
+        "omit"
+      );
+      ({ data, removed } = verify(extractJson(fix.text), seen));
+    } catch {
+      // keep the first version; the filter below still removes unsafe sentences
+    }
+    const still = treatmentViolations(data).length;
+    data = stripViolations(data);
+    safetyNote = `safety check: ${bad.length} sentence(s) rewritten${still ? `, ${still} removed` : ""}`;
+  }
+  const details = [removed ? `${removed} unverified article(s) removed` : "", safetyNote].filter(Boolean).join(" · ");
+  emit({ type: "step", step: "write", status: "done", detail: details || undefined });
   return data;
 }
 

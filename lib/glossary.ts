@@ -99,14 +99,14 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: "TSH (thyroid-stimulating hormone)",
     match: /\bTSH\b|thyr[eé]ostimuline/i,
-    plain: "A hormone from the brain that tells the thyroid gland how much thyroid hormone to make. When TSH is high, the thyroid may be making less hormone than usual.",
+    plain: "A hormone from the pituitary gland, at the base of the brain, that tells the thyroid how much hormone to make. A TSH above the usual range can be a sign the thyroid is less active. One result alone does not confirm a lasting condition, so it is often checked again.",
     query: "subclinical hypothyroidism[ti] AND review[pt]",
     organ: "thyroid",
   },
   {
     term: "Free T4",
     match: /\b(free )?T4\b|thyroxine/i,
-    plain: "The main hormone made by the thyroid gland. \"Free\" means the part that the body can use.",
+    plain: "The main thyroid hormone in the blood. \"Free\" means the part not attached to proteins. The body turns much of it into T3, the more active form.",
     query: "thyroxine thyroid function tests[ti]",
     organ: "thyroid",
   },
@@ -134,7 +134,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     term: "Thyroid antibodies",
     match: /thyroid antibod|anti-?TPO|TPO antibod/i,
-    plain: "A blood test that looks for proteins from the immune system that can react against the thyroid gland.",
+    plain: "A blood test that looks for immune-system proteins that can react against the thyroid gland. The most common one is TPO (thyroid peroxidase) antibodies, used to check for autoimmune thyroid conditions such as Hashimoto's thyroiditis.",
   },
   {
     term: "Thyroid nodule",
